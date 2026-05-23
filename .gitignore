@@ -1,0 +1,14 @@
+# Next.js build output (when accidentally run from repo root)
+.next/
+out/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Logs
+*.log
