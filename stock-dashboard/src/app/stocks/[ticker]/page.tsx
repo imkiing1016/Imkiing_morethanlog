@@ -5,9 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { changeBg, formatCompactNumber, formatCurrency, formatPercent } from "@/lib/format";
 import { displayTicker } from "@/lib/stocks/normalize";
+import { Suspense } from "react";
 import { PriceChart } from "@/components/detail/PriceChart";
 import { IndicatorPanel } from "@/components/detail/IndicatorPanel";
 import { AIAnalysisPanel } from "@/components/detail/AIAnalysisPanel";
+import { FundamentalsCard } from "@/components/detail/FundamentalsCard";
+import { NewsList } from "@/components/dashboard/NewsList";
 
 interface PageProps {
   params: Promise<{ ticker: string }>;
@@ -100,6 +103,10 @@ export default async function StockDetailPage({ params, searchParams }: PageProp
 
       <IndicatorPanel candles={candles} />
 
+      <Suspense fallback={<div className="h-32 animate-pulse rounded-lg bg-zinc-100 dark:bg-zinc-900" />}>
+        <FundamentalsCard ticker={quote.ticker} market={quote.market} />
+      </Suspense>
+
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-1">
           <CardHeader>
@@ -150,6 +157,10 @@ export default async function StockDetailPage({ params, searchParams }: PageProp
           <AIAnalysisPanel ticker={quote.ticker} market={quote.market} />
         </div>
       </div>
+
+      <Suspense fallback={<div className="h-32 animate-pulse rounded-lg bg-zinc-100 dark:bg-zinc-900" />}>
+        <NewsList ticker={quote.ticker} title={`${displayName} 관련 뉴스`} limit={8} />
+      </Suspense>
     </div>
   );
 }
