@@ -8,6 +8,14 @@ interface NewsListProps {
   limit?: number;
 }
 
+/** 링크가 비어있거나 더미("#")면 네이버 뉴스 검색으로 대체 */
+function safeHref(link: string | undefined, title: string): string {
+  if (!link || link === "#" || !/^https?:\/\//.test(link)) {
+    return `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(title)}`;
+  }
+  return link;
+}
+
 function timeAgo(ms: number): string {
   const diff = Date.now() - ms;
   const min = Math.floor(diff / 60000);
@@ -38,7 +46,7 @@ export async function NewsList({ ticker, title, limit = 8 }: NewsListProps) {
             {items.map((item, i) => (
               <li key={`${item.link}-${i}`} className="py-2.5">
                 <a
-                  href={item.link}
+                  href={safeHref(item.link, item.title)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="group flex items-start gap-2 text-xs"

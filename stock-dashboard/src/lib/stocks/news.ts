@@ -118,6 +118,11 @@ export async function getMarketNews(limit = 10): Promise<NewsItem[]> {
   }
 }
 
+/** 네이버 뉴스 검색 링크 (mock 헤드라인도 클릭 시 실제 관련 뉴스가 열리도록) */
+function naverNewsSearch(query: string): string {
+  return `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(query)}`;
+}
+
 function mockNews(input: string, limit: number): NewsItem[] {
   const { ticker } = normalizeInput(input);
   const seed = ticker.toUpperCase();
@@ -134,24 +139,30 @@ function mockNews(input: string, limit: number): NewsItem[] {
   ];
   return templates.slice(0, limit).map((title, i) => ({
     title,
-    link: "https://m.stock.naver.com/",
+    link: naverNewsSearch(`${seed} 주가`),
     publishedAt: now - i * 3600 * 1000,
-    source: "샘플 뉴스",
-    description: "샘플 뉴스 데이터입니다. 실제 환경에서는 네이버 금융 뉴스가 표시됩니다.",
+    source: "네이버 뉴스 검색",
+    description: "실시간 뉴스 연동 준비 중입니다. 클릭하면 네이버 뉴스 검색 결과가 열립니다.",
   }));
 }
 
 function mockMarketNews(limit: number): NewsItem[] {
   const now = Date.now();
-  const items: NewsItem[] = [
-    { title: "Fed, 금리 동결 시그널... 시장 안도", link: "#", publishedAt: now - 1800000, source: "샘플" },
-    { title: "코스피, 외국인 매수세에 상승 마감", link: "#", publishedAt: now - 3600000, source: "샘플" },
-    { title: "엔비디아 실적 발표 앞두고 AI 종목 강세", link: "#", publishedAt: now - 5400000, source: "샘플" },
-    { title: "원/달러 환율, 일주일새 최저치 경신", link: "#", publishedAt: now - 7200000, source: "샘플" },
-    { title: "삼성전자, HBM3E 양산 본격화", link: "#", publishedAt: now - 9000000, source: "샘플" },
-    { title: "테슬라, 새로운 자율주행 업데이트 공개", link: "#", publishedAt: now - 10800000, source: "샘플" },
-    { title: "유가 상승, 정유주 강세", link: "#", publishedAt: now - 12600000, source: "샘플" },
-    { title: "비트코인, 6만 달러 돌파", link: "#", publishedAt: now - 14400000, source: "샘플" },
+  const titles = [
+    "코스피 증시 시황",
+    "코스닥 증시 시황",
+    "원/달러 환율 동향",
+    "미국 증시 마감 시황",
+    "반도체 업종 동향",
+    "2차전지 업종 동향",
+    "Fed 금리 전망",
+    "국제 유가 동향",
   ];
-  return items.slice(0, limit);
+  return titles.slice(0, limit).map((title, i) => ({
+    title,
+    link: naverNewsSearch(title),
+    publishedAt: now - i * 1800000,
+    source: "네이버 뉴스 검색",
+    description: "클릭하면 네이버 뉴스 검색 결과가 열립니다.",
+  }));
 }
