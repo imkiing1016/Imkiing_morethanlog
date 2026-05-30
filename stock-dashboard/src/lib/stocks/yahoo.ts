@@ -2,6 +2,7 @@ import type { Candle, Quote, Range } from "@/types/stock";
 import { displayTicker, normalizeInput } from "./normalize";
 import { mockHistory, mockQuote } from "./mock";
 import { getNaverHistory, getNaverQuote } from "./naver";
+import { getNaverWorldHistory, getNaverWorldQuote } from "./naver-world";
 
 const YAHOO_HEADERS = {
   "User-Agent":
@@ -39,6 +40,15 @@ export async function getQuote(input: string): Promise<Quote> {
         console.warn(`[naver] quote ${symbol} failed, using mock`, err);
       }
       return mockQuote(input);
+    }
+  }
+
+  // 미국 주식: 네이버 해외증시 우선 (한국 IP 실시간), 실패 시 Yahoo, 최종 mock
+  try {
+    return await getNaverWorldQuote(input);
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(`[naver-world] quote ${symbol} failed, falling back to Yahoo`, err);
     }
   }
 
@@ -95,6 +105,15 @@ export async function getHistory(input: string, range: Range = "6mo"): Promise<C
         console.warn(`[naver] history ${symbol} failed, using mock`, err);
       }
       return mockHistory(input, rangeToDays(range));
+    }
+  }
+
+  // 미국 주식: 네이버 해외증시 일봉 우선, 실패 시 Yahoo, 최종 mock
+  try {
+    return await getNaverWorldHistory(input, range);
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(`[naver-world] history ${symbol} failed, falling back to Yahoo`, err);
     }
   }
 

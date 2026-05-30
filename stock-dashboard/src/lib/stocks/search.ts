@@ -9,74 +9,67 @@ export interface SearchResult {
   type?: string;
 }
 
-const YAHOO_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-  Accept: "application/json,text/plain,*/*",
-};
-
-interface YahooSearchResponse {
-  quotes?: Array<{
-    symbol?: string;
-    shortname?: string;
-    longname?: string;
-    exchange?: string;
-    quoteType?: string;
-    typeDisp?: string;
-  }>;
+interface NaverAutoCompleteItem {
+  reutersCode?: string;
+  symbolCode?: string;
+  name?: string;
+  typeName?: string;
+  nationName?: string;
+  nationCode?: string;
 }
 
-const KR_EXCHANGES = new Set(["KSC", "KOE", "KOQ"]);
-
-function detectMarketFromExchange(symbol: string, exchange?: string): Market {
-  if (symbol.endsWith(".KS") || symbol.endsWith(".KQ")) return "KR";
-  if (exchange && KR_EXCHANGES.has(exchange)) return "KR";
-  if (/^\d{6}(\.[A-Z]{2})?$/.test(symbol)) return "KR";
-  return "US";
-}
-
-function toDisplayTicker(symbol: string): string {
-  return symbol.replace(/\.(KS|KQ)$/i, "");
+interface NaverAutoCompleteResponse {
+  result?: { items?: NaverAutoCompleteItem[] };
 }
 
 export async function searchSymbols(query: string, limit = 10): Promise<SearchResult[]> {
   if (!query.trim()) return [];
   if (process.env.STOCK_DATA_MODE === "mock") return mockSearch(query, limit);
-  const url = new URL("https://query2.finance.yahoo.com/v1/finance/search");
-  url.searchParams.set("q", query.trim());
-  url.searchParams.set("quotesCount", String(limit));
-  url.searchParams.set("newsCount", "0");
-  url.searchParams.set("listsCount", "0");
+
+  // 네이버 통합검색 자동완성 (국내 + 해외, 한국 IP에서 동작)
+  const url = `https://m.stock.naver.com/front-api/search/autoComplete?query=${encodeURIComponent(
+    query.trim(),
+  )}&target=stock,etf,index`;
   try {
-    const res = await fetch(url.toString(), {
-      headers: YAHOO_HEADERS,
-      next: { revalidate: 3600 },
-    });
-    if (!res.ok) throw new Error(`Yahoo search ${res.status}`);
-    const json = (await res.json()) as YahooSearchResponse;
-    const quotes = json.quotes ?? [];
-    return quotes
-      .filter((q) => q.symbol && (q.quoteType === "EQUITY" || q.quoteType === "ETF" || q.quoteType === "INDEX"))
-      .map((q) => {
-        const symbol = q.symbol as string;
-        const market = detectMarketFromExchange(symbol, q.exchange);
+    const res = await fetch(url, { headers: NAVER_SEARCH_HEADERS, next: { revalidate: 3600 } });
+    if (!res.ok) throw new Error(`Naver autoComplete ${res.status}`);
+    const json = (await res.json()) as NaverAutoCompleteResponse;
+    const items = json.result?.items ?? [];
+    const results = items
+      .filter((it) => it.symbolCode || it.reutersCode)
+      .map((it) => {
+        const ticker = (it.symbolCode ?? it.reutersCode ?? "").replace(/\.[A-Z]+$/i, "");
+        const isKr =
+          /^\d{6}$/.test(ticker) ||
+          it.nationCode === "KOR" ||
+          (it.nationName ?? "").includes("국내");
+        const market: Market = isKr ? "KR" : "US";
         return {
-          symbol,
-          ticker: toDisplayTicker(symbol),
-          name: q.longname ?? q.shortname ?? symbol,
+          symbol: it.reutersCode ?? ticker,
+          ticker,
+          name: it.name ?? ticker,
           market,
-          exchange: q.exchange,
-          type: q.typeDisp ?? q.quoteType,
+          exchange: it.nationName,
+          type: it.typeName,
         };
       })
       .slice(0, limit);
+    if (results.length > 0) return results;
+    return mockSearch(query, limit);
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn(`[yahoo] search "${query}" failed, using mock`, err);
+      console.warn(`[naver] search "${query}" failed, using mock`, err);
     }
     return mockSearch(query, limit);
   }
 }
+
+const NAVER_SEARCH_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+  Accept: "application/json,text/plain,*/*",
+  Referer: "https://m.stock.naver.com/",
+};
 
 function mockSearch(query: string, limit: number): SearchResult[] {
   const q = query.trim().toUpperCase();
