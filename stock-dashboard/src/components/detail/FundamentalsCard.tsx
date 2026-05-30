@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getFundamentals } from "@/lib/stocks/fundamentals";
 import { formatCompactNumber, formatCurrency } from "@/lib/format";
+import { Term } from "@/components/ui/term";
 import type { Market } from "@/types/stock";
 
 interface FundamentalsCardProps {
@@ -21,19 +22,19 @@ function fmtPct(v?: number, digits = 2): string {
 export async function FundamentalsCard({ ticker, market }: FundamentalsCardProps) {
   const f = await getFundamentals(ticker);
 
-  // 네이버 제공 지표를 앞쪽에, 미제공(확장 예정) 지표는 값이 있을 때만 노출
-  const rows: Array<[string, string]> = [
-    ["PER", fmtNum(f.peRatio)],
-    ["PBR", fmtNum(f.pbRatio)],
-    ["EPS", fmtNum(f.eps)],
-    ["BPS", fmtNum(f.bps)],
-    ["배당 수익률", fmtPct(f.dividendYield)],
+  // [라벨, 값, 용어키(툴팁)]
+  const rows: Array<[string, string, string?]> = [
+    ["PER", fmtNum(f.peRatio), "PER"],
+    ["PBR", fmtNum(f.pbRatio), "PBR"],
+    ["EPS", fmtNum(f.eps), "EPS"],
+    ["BPS", fmtNum(f.bps), "BPS"],
+    ["배당 수익률", fmtPct(f.dividendYield), "배당수익률"],
     ["배당금", f.dividendRate != null ? formatCurrency(f.dividendRate, market) : "—"],
   ];
-  if (f.roe != null) rows.push(["ROE", fmtPct(f.roe)]);
-  if (f.profitMargin != null) rows.push(["순이익률", fmtPct(f.profitMargin)]);
+  if (f.roe != null) rows.push(["ROE", fmtPct(f.roe), "ROE"]);
+  if (f.profitMargin != null) rows.push(["순이익률", fmtPct(f.profitMargin), "순이익률"]);
   if (f.revenueGrowth != null) rows.push(["매출 성장률", fmtPct(f.revenueGrowth)]);
-  if (f.debtToEquity != null) rows.push(["부채비율 (D/E)", fmtNum(f.debtToEquity, 1)]);
+  if (f.debtToEquity != null) rows.push(["부채비율 (D/E)", fmtNum(f.debtToEquity, 1), "부채비율"]);
 
   const has52w = f.fiftyTwoWeekHigh != null || f.fiftyTwoWeekLow != null;
 
@@ -49,9 +50,11 @@ export async function FundamentalsCard({ ticker, market }: FundamentalsCardProps
       </CardHeader>
       <CardContent>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-3">
-          {rows.map(([label, value]) => (
+          {rows.map(([label, value, term]) => (
             <div key={label} className="flex items-center justify-between">
-              <dt className="text-zinc-500">{label}</dt>
+              <dt className="text-zinc-500">
+                {term ? <Term label={label} term={term} /> : label}
+              </dt>
               <dd className="tabular-nums">{value}</dd>
             </div>
           ))}
