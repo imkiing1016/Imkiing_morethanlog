@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getHistory, getQuote } from "@/lib/stocks/yahoo";
+import { getFundamentals } from "@/lib/stocks/fundamentals";
+import { getStockNews } from "@/lib/stocks/news";
 import { buildAnalysis } from "@/lib/ai/analyze";
 import type { AnalysisReport } from "@/types/stock";
 
@@ -19,11 +21,13 @@ export async function GET(
   if (!refresh && cached && cached.expires > Date.now()) {
     return NextResponse.json({ ...cached.value, fromCache: true });
   }
-  const [quote, history] = await Promise.all([
+  const [quote, history, fundamentals, news] = await Promise.all([
     getQuote(decoded),
     getHistory(decoded, "6mo"),
+    getFundamentals(decoded).catch(() => undefined),
+    getStockNews(decoded, 8).catch(() => []),
   ]);
-  const report = await buildAnalysis({ quote, history });
+  const report = await buildAnalysis({ quote, history, fundamentals, news });
   CACHE.set(decoded, { value: report, expires: Date.now() + TTL_MS });
   return NextResponse.json(report);
 }

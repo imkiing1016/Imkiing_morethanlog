@@ -43,7 +43,7 @@ export function AIAnalysisPanel({ ticker, market }: AIAnalysisPanelProps) {
             <Sparkles className="h-4 w-4 text-violet-500" /> AI 분석 리포트
           </CardTitle>
           <p className="mt-1 text-xs text-zinc-500">
-            가격/거래량/지표 데이터를 기반으로 한 보조 분석
+            차트 기술지표 · 펀더멘털(재무) · 최근 뉴스를 종합한 보조 분석
           </p>
         </div>
         <div className="flex gap-2">

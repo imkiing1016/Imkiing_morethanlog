@@ -1,28 +1,37 @@
 import type { AnalysisReport, Candle, Quote } from "@/types/stock";
 import { ema, rsi, macd } from "@/lib/stocks/indicators";
+import type { Fundamentals } from "@/lib/stocks/fundamentals";
+import type { NewsItem } from "@/lib/stocks/news";
 
 interface AnalyzeInput {
   quote: Quote;
   history: Candle[];
+  fundamentals?: Fundamentals;
+  news?: NewsItem[];
 }
 
 const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
 
-export async function buildAnalysis({ quote, history }: AnalyzeInput): Promise<AnalysisReport> {
+export async function buildAnalysis(input: AnalyzeInput): Promise<AnalysisReport> {
+  const { quote, history, fundamentals, news } = input;
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return mockAnalysis({ quote, history });
+    return mockAnalysis(input);
   }
   try {
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
     const client = new Anthropic({ apiKey });
-    const summary = buildSeriesSummary(history);
-    const prompt = renderPrompt(quote, summary);
+    const prompt = renderPrompt(
+      quote,
+      buildSeriesSummary(history),
+      buildFundamentalsSummary(fundamentals),
+      buildNewsSummary(news),
+    );
     const message = await client.messages.create({
       model: MODEL,
-      max_tokens: 1200,
+      max_tokens: 1500,
       system:
-        "You are a careful equity research assistant. Always respond in Korean using strict JSON matching the requested schema. Do NOT provide direct buy/sell recommendations; describe scenarios and risks.",
+        "You are a careful equity research assistant. Synthesize technical indicators, fundamental metrics, AND recent news headlines together — do not rely on price/chart alone. Always respond in Korean using strict JSON matching the requested schema. Cite which factor (차트/재무/뉴스) drives each point. Do NOT provide direct buy/sell recommendations; describe scenarios and risks.",
       messages: [{ role: "user", content: prompt }],
     });
     const text = message.content
@@ -43,7 +52,7 @@ export async function buildAnalysis({ quote, history }: AnalyzeInput): Promise<A
     };
   } catch (err) {
     console.warn("[ai] claude failed, falling back to mock", err);
-    return mockAnalysis({ quote, history });
+    return mockAnalysis(input);
   }
 }
 
@@ -72,18 +81,54 @@ function buildSeriesSummary(history: Candle[]) {
   ].join("\n");
 }
 
-function renderPrompt(quote: Quote, series: string): string {
-  return `Analyze the following equity using the supplied data only. Reply with strict JSON.
+function pct(v?: number, digits = 2): string {
+  return v == null || !isFinite(v) ? "n/a" : `${(v * 100).toFixed(digits)}%`;
+}
+function num(v?: number, digits = 2): string {
+  return v == null || !isFinite(v) ? "n/a" : v.toFixed(digits);
+}
+
+function buildFundamentalsSummary(f?: Fundamentals): string {
+  if (!f) return "no fundamentals data";
+  return [
+    `PER(TTM): ${num(f.peRatio)}, Forward PER: ${num(f.forwardPe)}, PBR: ${num(f.pbRatio)}`,
+    `EPS: ${num(f.eps)}, ROE: ${pct(f.roe)}, 순이익률: ${pct(f.profitMargin)}`,
+    `매출성장률: ${pct(f.revenueGrowth)}, 이익성장률: ${pct(f.earningsGrowth)}`,
+    `배당수익률: ${pct(f.dividendYield)}, 베타: ${num(f.beta)}, 부채비율(D/E): ${num(f.debtToEquity, 1)}`,
+    `52주 고점: ${num(f.fiftyTwoWeekHigh)}, 52주 저점: ${num(f.fiftyTwoWeekLow)}`,
+    f.source === "mock" ? "(주의: 펀더멘털은 샘플 데이터)" : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildNewsSummary(news?: NewsItem[]): string {
+  if (!news || news.length === 0) return "no recent news";
+  return news
+    .slice(0, 8)
+    .map((n, i) => {
+      const when = new Date(n.publishedAt).toLocaleDateString("ko-KR");
+      return `${i + 1}. [${when}] ${n.title}${n.source ? ` (${n.source})` : ""}`;
+    })
+    .join("\n");
+}
+
+function renderPrompt(quote: Quote, series: string, fundamentals: string, news: string): string {
+  return `Analyze the following equity by SYNTHESIZING three data domains together:
+technical chart indicators, fundamental financials, and recent news.
+Each bullish/bearish point should reference its source as a tag: [차트], [재무], or [뉴스].
+Reply with strict JSON only.
 
 Schema:
 {
-  "summary": "2~3문장 요약",
-  "bullish": ["불릿 1", "불릿 2", "불릿 3"],
-  "bearish": ["불릿 1", "불릿 2", "불릿 3"],
-  "outlook": "단기/중기 시나리오 (3~5문장)",
+  "summary": "차트·재무·뉴스를 종합한 2~4문장 요약",
+  "bullish": ["[차트/재무/뉴스] 근거 불릿 3~4개"],
+  "bearish": ["[차트/재무/뉴스] 근거 불릿 3~4개"],
+  "outlook": "단기/중기 시나리오 (4~6문장, 세 영역을 모두 언급)",
   "riskLevel": "low" | "medium" | "high"
 }
 
+== 종목 정보 ==
 Ticker: ${quote.ticker} (${quote.market})
 Name: ${quote.name}
 Currency: ${quote.currency}
@@ -91,10 +136,17 @@ Current price: ${quote.price}
 Daily change: ${quote.changePercent.toFixed(2)}%
 Volume: ${quote.volume}
 
-Series summary:
+== 차트/기술지표 ==
 ${series}
 
-Be candid about uncertainty. Use Korean. JSON only.`;
+== 펀더멘털/재무 ==
+${fundamentals}
+
+== 최근 뉴스 헤드라인 ==
+${news}
+
+뉴스 헤드라인이 가격/재무에 주는 함의를 해석에 반영하세요.
+불확실성은 솔직히 기술하세요. 한국어로, JSON만 출력.`;
 }
 
 function parseModelJson(text: string): Partial<AnalysisReport> {
@@ -107,8 +159,7 @@ function parseModelJson(text: string): Partial<AnalysisReport> {
   }
 }
 
-function mockAnalysis({ quote, history }: AnalyzeInput): AnalysisReport {
-  const series = buildSeriesSummary(history);
+function mockAnalysis({ quote, history, fundamentals, news }: AnalyzeInput): AnalysisReport {
   const e20 = ema(history, 20).at(-1)?.value ?? quote.price;
   const e60 = ema(history, 60).at(-1)?.value ?? quote.price;
   const rsiLast = rsi(history, 14).at(-1)?.value ?? 50;
@@ -120,21 +171,49 @@ function mockAnalysis({ quote, history }: AnalyzeInput): AnalysisReport {
       : Math.abs(quote.changePercent) > 1.5
         ? "medium"
         : "low";
+
+  // 펀더멘털 종합
+  const bullish: string[] = [
+    `[차트] EMA20(${e20.toFixed(2)})이 EMA60(${e60.toFixed(2)}) ${e20 >= e60 ? "위" : "아래"}에서 형성, ${direction} 구조`,
+  ];
+  const bearish: string[] = [
+    momentum === "과매수"
+      ? "[차트] RSI 과매수 구간 진입으로 단기 조정 가능성"
+      : "[차트] RSI 중립/약세 구간으로 모멘텀 제한적",
+  ];
+
+  if (fundamentals) {
+    const f = fundamentals;
+    if (f.roe != null && f.roe > 0.15) bullish.push(`[재무] ROE ${(f.roe * 100).toFixed(1)}%로 수익성 양호`);
+    if (f.revenueGrowth != null && f.revenueGrowth > 0.1)
+      bullish.push(`[재무] 매출성장률 ${(f.revenueGrowth * 100).toFixed(1)}%로 외형 성장`);
+    if (f.peRatio != null && f.peRatio > 30)
+      bearish.push(`[재무] PER ${f.peRatio.toFixed(1)}배로 밸류에이션 부담`);
+    if (f.debtToEquity != null && f.debtToEquity > 100)
+      bearish.push(`[재무] 부채비율(D/E) ${f.debtToEquity.toFixed(0)}로 재무 레버리지 높음`);
+    if (f.dividendYield != null && f.dividendYield > 0.02)
+      bullish.push(`[재무] 배당수익률 ${(f.dividendYield * 100).toFixed(2)}%로 인컴 매력`);
+  }
+
+  const newsCount = news?.length ?? 0;
+  if (newsCount > 0) {
+    bullish.push(`[뉴스] 최근 뉴스 ${newsCount}건 확인 — 첫 헤드라인: "${news![0].title.slice(0, 40)}"`);
+    bearish.push("[뉴스] 헤드라인의 실제 논조/이벤트는 본문 확인 필요 (속보성 리스크)");
+  } else {
+    bearish.push("[뉴스] 최근 뉴스 데이터 부족 — 이벤트 리스크 점검 한계");
+  }
+
+  const fundLine = fundamentals
+    ? `PER ${num(fundamentals.peRatio)}·ROE ${pct(fundamentals.roe)} 등 재무 지표와 `
+    : "";
+
   return {
     ticker: quote.ticker,
     generatedAt: Date.now(),
-    summary: `${quote.name}은(는) 중기 추세선(EMA60) 대비 ${direction} 흐름을 보이며, RSI 기준 ${momentum} 구간에 위치합니다. 현재가는 ${quote.price}이며 당일 ${quote.changePercent.toFixed(2)}% 변동했습니다. (예시 분석 - ANTHROPIC_API_KEY 설정 시 실제 분석)`,
-    bullish: [
-      `EMA20(${e20.toFixed(2)})이 EMA60(${e60.toFixed(2)}) ${e20 >= e60 ? "위" : "아래"}에서 형성`,
-      `최근 ${history.length}일 데이터 기반 변동성 관측 가능`,
-      "거래량 흐름과 기술적 패턴 추가 분석 필요",
-    ],
-    bearish: [
-      momentum === "과매수" ? "RSI 과매수 구간 진입으로 단기 조정 가능성" : "RSI 중립 구간으로 모멘텀 약함",
-      "거시 환경/금리 변동에 따른 외부 리스크",
-      "차트 단독 판단의 한계 - 펀더멘털 점검 필요",
-    ],
-    outlook: `단기적으로는 EMA20 라인을 지지선으로 활용할 수 있으며, ${direction} 추세가 유지될 경우 기존 흐름 연장이 가능합니다. 중기적으로는 거시 환경, 실적 발표, 업종 비교 등 추가 데이터로 보완이 필요합니다. RSI ${rsiLast.toFixed(1)} 구간에서는 ${momentum === "과매수" ? "이익 실현 매물 출현 가능성" : momentum === "과매도" ? "기술적 반등 시도 가능성" : "방향성 형성 대기"}을 염두에 두시기 바랍니다.`,
+    summary: `${quote.name}은(는) 중기 추세선(EMA60) 대비 ${direction} 흐름이며 RSI 기준 ${momentum} 구간입니다. ${fundLine}최근 뉴스 ${newsCount}건을 종합하면, 현재가 ${quote.price}(당일 ${quote.changePercent.toFixed(2)}%)는 차트·재무·뉴스 신호가 혼재된 국면입니다. (예시 분석 - ANTHROPIC_API_KEY 설정 시 Claude 종합 분석)`,
+    bullish: bullish.slice(0, 4),
+    bearish: bearish.slice(0, 4),
+    outlook: `[차트] 단기적으로 EMA20을 지지선으로 ${direction} 추세 연장 여부가 관건이며, RSI ${rsiLast.toFixed(1)} 구간에서는 ${momentum === "과매수" ? "이익 실현 매물" : momentum === "과매도" ? "기술적 반등" : "방향성 대기"}을 염두에 둡니다. [재무] ${fundamentals ? `PER ${num(fundamentals.peRatio)}·매출성장 ${pct(fundamentals.revenueGrowth)} 등 밸류에이션과 성장성을 함께 점검해야 합니다.` : "펀더멘털 데이터 보완이 필요합니다."} [뉴스] 최근 ${newsCount}건의 헤드라인이 실적/규제/제품 이벤트를 시사할 수 있어 본문 확인이 권장됩니다. 세 영역의 신호가 일치할 때 추세 신뢰도가 높아집니다.`,
     riskLevel: risk,
     fromCache: false,
     source: "mock",
