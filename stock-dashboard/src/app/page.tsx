@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { WatchlistGrid } from "@/components/dashboard/WatchlistGrid";
 import { SentimentGauge } from "@/components/dashboard/SentimentGauge";
 import { MarketOverview } from "@/components/dashboard/MarketOverview";
+import { MarketSummaryCard } from "@/components/dashboard/MarketSummaryCard";
 import { NewsList } from "@/components/dashboard/NewsList";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -23,6 +24,10 @@ export default function HomePage() {
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-6">
       <Suspense fallback={<SectionFallback title="시장 개요" />}>
         <MarketOverview />
+      </Suspense>
+
+      <Suspense fallback={<SectionFallback title="오늘의 시장 요약" />}>
+        <MarketSummaryCard />
       </Suspense>
 
       <section className="grid gap-4 lg:grid-cols-2">
