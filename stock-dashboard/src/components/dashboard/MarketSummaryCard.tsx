@@ -54,7 +54,7 @@ export async function MarketSummaryCard() {
         ) : null}
         {s.source === "heuristic" ? (
           <p className="text-[10px] text-zinc-400">
-            로컬 LLM(Ollama) 실행 시 뉴스·지표를 종합한 요약을 자동 생성합니다.
+            로컬 LLM(LM Studio 등) 실행 시 뉴스·지표를 종합한 요약을 자동 생성합니다.
           </p>
         ) : null}
       </CardContent>

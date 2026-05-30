@@ -58,7 +58,7 @@ export function AIAnalysisPanel({ ticker, market }: AIAnalysisPanelProps) {
         {!report ? (
           <div className="flex flex-col items-center gap-3 py-6 text-center">
             <p className="max-w-sm text-sm text-zinc-500">
-              버튼을 눌러 AI 분석 리포트를 생성하세요. 로컬 LLM(Ollama)이 실행 중이면 차트·재무·뉴스를
+              버튼을 눌러 AI 분석 리포트를 생성하세요. 로컬 LLM(LM Studio 등)이 실행 중이면 차트·재무·뉴스를
               종합한 분석을, 아니면 지표 기반 자동 분석을 제공합니다.
             </p>
             <Button onClick={() => load(false)} variant="primary" disabled={loading}>

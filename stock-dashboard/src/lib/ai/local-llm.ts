@@ -1,13 +1,19 @@
-// 로컬 LLM 클라이언트 (Ollama / OpenAI 호환 서버)
-// 기본: Ollama (http://localhost:11434). API 키 불필요, 사용자 PC에서 무료 실행.
+// 로컬 LLM 클라이언트 (OpenAI 호환 API)
+// LM Studio / Ollama / llama.cpp 등 OpenAI 호환 서버를 지원.
+// API 키 불필요(또는 더미), 사용자 PC에서 무료 실행.
 //
 // 환경변수:
-//   LOCAL_LLM_URL    기본 "http://localhost:11434"
-//   LOCAL_LLM_MODEL  기본 "qwen2.5" (한국어 양호). llama3.1 / gemma2 등 가능
-//   LOCAL_LLM_DISABLED  "1" 이면 로컬 LLM 사용 안 함(휴리스틱/mock만)
+//   LOCAL_LLM_URL    OpenAI 호환 베이스 URL.
+//                    기본 "http://localhost:1234/v1" (LM Studio)
+//                    Ollama 사용 시: "http://localhost:11434/v1"
+//   LOCAL_LLM_MODEL  모델 ID. 기본 "local-model"
+//                    (LM Studio: 로드한 모델명 / Ollama: 예 "qwen2.5")
+//   LOCAL_LLM_API_KEY  선택. LM Studio는 불필요(더미 허용)
+//   LOCAL_LLM_DISABLED "1" 이면 로컬 LLM 사용 안 함(휴리스틱/mock만)
 
-const LLM_URL = (process.env.LOCAL_LLM_URL ?? "http://localhost:11434").replace(/\/$/, "");
-const LLM_MODEL = process.env.LOCAL_LLM_MODEL ?? "qwen2.5";
+const LLM_URL = (process.env.LOCAL_LLM_URL ?? "http://localhost:1234/v1").replace(/\/$/, "");
+const LLM_MODEL = process.env.LOCAL_LLM_MODEL ?? "local-model";
+const LLM_API_KEY = process.env.LOCAL_LLM_API_KEY ?? "lm-studio";
 
 export function isLocalLlmEnabled(): boolean {
   return process.env.LOCAL_LLM_DISABLED !== "1";
@@ -15,18 +21,18 @@ export function isLocalLlmEnabled(): boolean {
 
 interface LocalLlmOptions {
   timeoutMs?: number;
-  /** JSON 출력 강제 (Ollama format:"json") */
+  /** JSON 출력 강제 (response_format: json_object) */
   json?: boolean;
   temperature?: number;
 }
 
-interface OllamaChatResponse {
-  message?: { content?: string };
+interface OpenAIChatResponse {
+  choices?: Array<{ message?: { content?: string } }>;
 }
 
 /**
- * 로컬 LLM에 system+user 프롬프트를 보내고 응답 텍스트를 반환.
- * Ollama /api/chat 사용. 실패 시 throw (호출부에서 휴리스틱/mock으로 폴백).
+ * 로컬 LLM(OpenAI 호환)에 system+user 프롬프트를 보내고 응답 텍스트를 반환.
+ * POST {LLM_URL}/chat/completions 사용. 실패 시 throw (호출부에서 휴리스틱/mock 폴백).
  */
 export async function localLlmChat(
   system: string,
@@ -34,15 +40,17 @@ export async function localLlmChat(
   opts: LocalLlmOptions = {},
 ): Promise<string> {
   if (!isLocalLlmEnabled()) throw new Error("local LLM disabled");
-  const url = `${LLM_URL}/api/chat`;
-  const res = await fetch(url, {
+  const res = await fetch(`${LLM_URL}/chat/completions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${LLM_API_KEY}`,
+    },
     body: JSON.stringify({
       model: LLM_MODEL,
       stream: false,
-      ...(opts.json ? { format: "json" } : {}),
-      options: { temperature: opts.temperature ?? 0.3 },
+      temperature: opts.temperature ?? 0.3,
+      ...(opts.json ? { response_format: { type: "json_object" } } : {}),
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
@@ -52,8 +60,8 @@ export async function localLlmChat(
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`Local LLM ${res.status}`);
-  const json = (await res.json()) as OllamaChatResponse;
-  const content = json.message?.content;
+  const json = (await res.json()) as OpenAIChatResponse;
+  const content = json.choices?.[0]?.message?.content;
   if (!content) throw new Error("Local LLM: empty response");
   return content;
 }
