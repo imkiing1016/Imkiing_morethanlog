@@ -142,18 +142,21 @@ export async function getStockNews(input: string, limit = 8): Promise<NewsItem[]
   }
 }
 
-export async function getMarketNews(limit = 10): Promise<NewsItem[]> {
-  if (process.env.STOCK_DATA_MODE === "mock") return mockMarketNews(limit);
-  // 시황 전용 피드 엔드포인트가 확인되지 않아, 시총 1위(삼성전자=005930) 뉴스 피드를
-  // 시장 뉴스로 사용. 해당 피드에는 코스피/거시/대형주 시황 기사가 다수 포함됨.
+export async function getMarketNews(limit = 10, market: "KR" | "US" = "KR"): Promise<NewsItem[]> {
+  if (process.env.STOCK_DATA_MODE === "mock") return mockMarketNews(limit, market);
   try {
+    if (market === "US") {
+      // 미국 시장 대표로 S&P500 ETF(SPY) 뉴스를 사용
+      return await getStockNews("SPY", limit);
+    }
+    // 국내: 시총 1위(삼성전자=005930) 피드(코스피/거시/대형주 시황 다수 포함)
     const url = `https://m.stock.naver.com/front-api/news/stock/list?itemCode=005930&page=1&pageSize=${limit}`;
     return await fetchNaverNews(url, limit);
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn(`[naver] market news failed, using mock`, err);
+      console.warn(`[naver] market news (${market}) failed, using mock`, err);
     }
-    return mockMarketNews(limit);
+    return mockMarketNews(limit, market);
   }
 }
 
@@ -185,18 +188,30 @@ function mockNews(input: string, limit: number): NewsItem[] {
   }));
 }
 
-function mockMarketNews(limit: number): NewsItem[] {
+function mockMarketNews(limit: number, market: "KR" | "US" = "KR"): NewsItem[] {
   const now = Date.now();
-  const titles = [
-    "코스피 증시 시황",
-    "코스닥 증시 시황",
-    "원/달러 환율 동향",
-    "미국 증시 마감 시황",
-    "반도체 업종 동향",
-    "2차전지 업종 동향",
-    "Fed 금리 전망",
-    "국제 유가 동향",
-  ];
+  const titles =
+    market === "US"
+      ? [
+          "미국 증시 마감 시황 (S&P500·나스닥)",
+          "Fed 기준금리 전망",
+          "엔비디아·AI 반도체 동향",
+          "미국 빅테크 실적 동향",
+          "미 국채 금리·달러 동향",
+          "국제 유가 동향",
+          "테슬라·전기차 시장 동향",
+          "미국 고용·물가 지표",
+        ]
+      : [
+          "코스피 증시 시황",
+          "코스닥 증시 시황",
+          "원/달러 환율 동향",
+          "반도체 업종 동향",
+          "2차전지 업종 동향",
+          "외국인·기관 매매 동향",
+          "Fed 금리와 국내 증시",
+          "국제 유가 동향",
+        ];
   return titles.slice(0, limit).map((title, i) => ({
     title,
     link: naverNewsSearch(title),

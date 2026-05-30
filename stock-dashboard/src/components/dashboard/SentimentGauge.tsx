@@ -116,7 +116,7 @@ export function SentimentGauge({ market }: SentimentGaugeProps) {
     try {
       const [sRes, nRes] = await Promise.all([
         fetch(`/api/sentiment?market=${market}`, { cache: "no-store" }),
-        fetch(`/api/news?limit=4`, { cache: "no-store" }).catch(() => null),
+        fetch(`/api/news?market=${market}&limit=4`, { cache: "no-store" }).catch(() => null),
       ]);
       if (!sRes.ok) throw new Error(`status ${sRes.status}`);
       setData((await sRes.json()) as MarketSentiment);
