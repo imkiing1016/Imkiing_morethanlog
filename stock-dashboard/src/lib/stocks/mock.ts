@@ -63,6 +63,7 @@ export function mockQuote(input: string): Quote {
     dayHigh: Number((price * (1 + rand() * 0.02)).toFixed(market === "KR" ? 0 : 2)),
     dayLow: Number((price * (1 - rand() * 0.02)).toFixed(market === "KR" ? 0 : 2)),
     updatedAt: Date.now(),
+    source: "mock",
   };
 }
 

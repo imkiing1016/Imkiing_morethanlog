@@ -17,7 +17,10 @@ export interface Quote {
   dayHigh?: number;
   dayLow?: number;
   updatedAt: number;
+  source?: QuoteSource;
 }
+
+export type QuoteSource = "naver" | "yahoo" | "mock";
 
 export interface Candle {
   time: number;

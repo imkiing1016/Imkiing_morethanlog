@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { changeBg, formatCompactNumber, formatCurrency, formatPercent } from "@/lib/format";
 import { toYahooSymbol } from "@/lib/stocks/normalize";
+import { SourceBadge } from "@/components/detail/SourceBadge";
 
 interface StockCardProps {
   item: WatchItem;
@@ -70,6 +71,7 @@ export function StockCard({ item, quote, loading, onRemove, onOpenAlerts }: Stoc
               <span className="text-2xl font-semibold tabular-nums">
                 {formatCurrency(quote.price, quote.market)}
               </span>
+              <SourceBadge source={quote.source} />
             </div>
             <div className="flex items-center gap-2">
               <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${changeBg(quote.change)}`}>

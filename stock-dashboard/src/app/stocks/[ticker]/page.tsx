@@ -10,6 +10,7 @@ import { PriceChart } from "@/components/detail/PriceChart";
 import { IndicatorPanel } from "@/components/detail/IndicatorPanel";
 import { AIAnalysisPanel } from "@/components/detail/AIAnalysisPanel";
 import { FundamentalsCard } from "@/components/detail/FundamentalsCard";
+import { SourceBadge } from "@/components/detail/SourceBadge";
 import { NewsList } from "@/components/dashboard/NewsList";
 
 interface PageProps {
@@ -57,6 +58,7 @@ export default async function StockDetailPage({ params, searchParams }: PageProp
           <div className="flex items-center gap-2">
             <Badge tone={isKr ? "info" : "default"}>{quote.market}</Badge>
             <span className="font-mono text-sm text-zinc-500">{quote.ticker}</span>
+            <SourceBadge source={quote.source} />
           </div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">{displayName}</h1>
         </div>

@@ -1,6 +1,7 @@
 import type { Candle, Quote, Range } from "@/types/stock";
 import { displayTicker, normalizeInput } from "./normalize";
 import { mockHistory, mockQuote } from "./mock";
+import { getNaverHistory, getNaverQuote } from "./naver";
 
 const YAHOO_HEADERS = {
   "User-Agent":
@@ -27,6 +28,20 @@ async function fetchYahooChart(symbol: string, range: Range | "5d" | "1d", inter
 export async function getQuote(input: string): Promise<Quote> {
   const { ticker, market, symbol } = normalizeInput(input);
   if (USE_MOCK) return mockQuote(input);
+
+  // 한국 주식: 네이버 금융 사용 (한국 IP 실시간). Yahoo는 한국 종목 차단되므로 건너뛰고,
+  // 네이버 실패 시 곧바로 mock(샘플)으로. mock은 UI에서 "샘플 데이터" 배지로 표시됨.
+  if (market === "KR") {
+    try {
+      return await getNaverQuote(input);
+    } catch (err) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`[naver] quote ${symbol} failed, using mock`, err);
+      }
+      return mockQuote(input);
+    }
+  }
+
   try {
     const result = await fetchYahooChart(symbol, "5d");
     const meta = result.meta;
@@ -39,16 +54,18 @@ export async function getQuote(input: string): Promise<Quote> {
       symbol: meta.symbol ?? symbol,
       name: meta.longName ?? meta.shortName ?? ticker,
       market,
-      price: Number(price.toFixed(market === "KR" ? 0 : 4)),
-      previousClose: Number(previousClose.toFixed(market === "KR" ? 0 : 4)),
-      change: Number(change.toFixed(market === "KR" ? 0 : 4)),
+      // 이 지점은 미국 종목 전용 (한국 종목은 위에서 네이버로 분기·반환됨)
+      price: Number(price.toFixed(4)),
+      previousClose: Number(previousClose.toFixed(4)),
+      change: Number(change.toFixed(4)),
       changePercent: Number(changePercent.toFixed(2)),
-      currency: meta.currency ?? (market === "KR" ? "KRW" : "USD"),
+      currency: meta.currency ?? "USD",
       volume: meta.regularMarketVolume ?? 0,
       marketCap: meta.marketCap,
       dayHigh: meta.regularMarketDayHigh,
       dayLow: meta.regularMarketDayLow,
       updatedAt: Date.now(),
+      source: "yahoo",
     };
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
@@ -66,8 +83,21 @@ export async function getQuotes(inputs: string[]): Promise<Quote[]> {
 }
 
 export async function getHistory(input: string, range: Range = "6mo"): Promise<Candle[]> {
-  const { symbol } = normalizeInput(input);
+  const { symbol, market } = normalizeInput(input);
   if (USE_MOCK) return mockHistory(input, rangeToDays(range));
+
+  // 한국 주식: 네이버 일봉 사용. 실패 시 곧바로 mock(샘플).
+  if (market === "KR") {
+    try {
+      return await getNaverHistory(input, range);
+    } catch (err) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`[naver] history ${symbol} failed, using mock`, err);
+      }
+      return mockHistory(input, rangeToDays(range));
+    }
+  }
+
   try {
     const result = await fetchYahooChart(symbol, range);
     const ts = result.timestamp ?? [];
