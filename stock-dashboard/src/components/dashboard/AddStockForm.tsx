@@ -44,7 +44,25 @@ export function AddStockForm() {
     if (!trimmed) return;
     setLoading(true);
     try {
-      const result = add(trimmed);
+      let toAdd = trimmed;
+      let name: string | undefined;
+      // 종목코드(6자리 숫자) 또는 영문 티커가 아니면(한글 회사명 등)
+      // 검색 API로 종목코드를 먼저 해석한다.
+      const looksLikeCode = /^\d{6}(\.[A-Z]{2})?$/i.test(trimmed) || /^[A-Za-z][A-Za-z.\-]{0,9}$/.test(trimmed);
+      if (!looksLikeCode) {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}&limit=1`, {
+          cache: "no-store",
+        });
+        const json = (await res.json()) as { results?: Array<{ ticker: string; name: string }> };
+        const top = json.results?.[0];
+        if (!top) {
+          setError("종목을 찾을 수 없습니다");
+          return;
+        }
+        toAdd = top.ticker;
+        name = top.name;
+      }
+      const result = add(toAdd, name);
       if (!result.ok) {
         setError(result.reason ?? "추가 실패");
         return;
