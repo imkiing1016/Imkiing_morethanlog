@@ -10,8 +10,8 @@ export interface SearchResult {
 }
 
 interface NaverAutoCompleteItem {
-  reutersCode?: string;
-  symbolCode?: string;
+  code?: string; // 심볼 (예: "AMZN", "005930")
+  reutersCode?: string; // 해외: "AMZN.O", 국내: "005930"
   name?: string;
   typeName?: string;
   nationName?: string;
@@ -36,9 +36,9 @@ export async function searchSymbols(query: string, limit = 10): Promise<SearchRe
     const json = (await res.json()) as NaverAutoCompleteResponse;
     const items = json.result?.items ?? [];
     const results = items
-      .filter((it) => it.symbolCode || it.reutersCode)
+      .filter((it) => it.code || it.reutersCode)
       .map((it) => {
-        const ticker = (it.symbolCode ?? it.reutersCode ?? "").replace(/\.[A-Z]+$/i, "");
+        const ticker = (it.code ?? it.reutersCode ?? "").replace(/\.[A-Z]+$/i, "");
         const isKr =
           /^\d{6}$/.test(ticker) ||
           it.nationCode === "KOR" ||

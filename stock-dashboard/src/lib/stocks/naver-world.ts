@@ -18,8 +18,8 @@ function parseNum(value: unknown): number | undefined {
 }
 
 interface AutoCompleteItem {
-  reutersCode?: string;
-  symbolCode?: string;
+  code?: string; // 네이버 자동완성의 심볼 필드는 'code' (예: "AMZN")
+  reutersCode?: string; // 예: "AMZN.O"
   name?: string;
   typeName?: string;
 }
@@ -39,11 +39,16 @@ async function resolveReutersCode(ticker: string): Promise<{ code: string; name?
   const json = (await res.json()) as AutoCompleteResponse;
   const items = json.result?.items ?? [];
   if (items.length === 0) return null;
-  // 심볼 정확 일치 우선, 없으면 첫 결과
-  const exact = items.find((it) => (it.symbolCode ?? "").toUpperCase() === q && it.reutersCode);
+  // 심볼(code) 정확 일치 우선, 없으면 첫 결과
+  const exact = items.find((it) => (it.code ?? "").toUpperCase() === q && it.reutersCode);
   const pick = exact ?? items.find((it) => it.reutersCode);
   if (!pick?.reutersCode) return null;
   return { code: pick.reutersCode, name: pick.name };
+}
+
+interface TotalInfoItem {
+  code?: string;
+  value?: string;
 }
 
 interface NaverWorldBasic {
@@ -54,11 +59,9 @@ interface NaverWorldBasic {
   compareToPreviousClosePrice?: string;
   compareToPreviousPrice?: { code?: string };
   fluctuationsRatio?: string;
-  openPrice?: string;
-  highPrice?: string;
-  lowPrice?: string;
-  accumulatedTradingVolume?: string;
   currencyType?: { code?: string };
+  // 고가/저가/거래량/전일종가 등은 이 배열 안에 code-value 쌍으로 들어있음
+  stockItemTotalInfos?: TotalInfoItem[];
 }
 
 /** 네이버 해외주식 시세 (미국 등) */
@@ -79,9 +82,15 @@ export async function getNaverWorldQuote(input: string): Promise<Quote> {
   const isDown = dirCode === "4" || dirCode === "5";
   const rawChange = parseNum(json.compareToPreviousClosePrice) ?? 0;
   const change = isDown ? -Math.abs(rawChange) : Math.abs(rawChange);
-  const previousClose = price - change;
   const rawRatio = parseNum(json.fluctuationsRatio) ?? 0;
   const changePercent = isDown ? -Math.abs(rawRatio) : Math.abs(rawRatio);
+
+  // stockItemTotalInfos: [{code:"basePrice",value:"274.00"}, {code:"highPrice",...}, ...]
+  const infos = new Map(
+    (json.stockItemTotalInfos ?? []).map((it) => [it.code ?? "", it.value ?? ""]),
+  );
+  const basePrice = parseNum(infos.get("basePrice"));
+  const previousClose = basePrice ?? price - change;
 
   return {
     ticker,
@@ -93,9 +102,9 @@ export async function getNaverWorldQuote(input: string): Promise<Quote> {
     change: Number(change.toFixed(4)),
     changePercent: Number(changePercent.toFixed(2)),
     currency: json.currencyType?.code ?? "USD",
-    volume: parseNum(json.accumulatedTradingVolume) ?? 0,
-    dayHigh: parseNum(json.highPrice),
-    dayLow: parseNum(json.lowPrice),
+    volume: parseNum(infos.get("accumulatedTradingVolume")) ?? 0,
+    dayHigh: parseNum(infos.get("highPrice")),
+    dayLow: parseNum(infos.get("lowPrice")),
     updatedAt: Date.now(),
     source: "naver",
   };

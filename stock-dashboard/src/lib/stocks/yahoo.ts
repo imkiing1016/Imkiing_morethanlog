@@ -43,43 +43,13 @@ export async function getQuote(input: string): Promise<Quote> {
     }
   }
 
-  // 미국 주식: 네이버 해외증시 우선 (한국 IP 실시간), 실패 시 Yahoo, 최종 mock
+  // 미국 등 해외 주식: 네이버 해외증시 사용. Yahoo는 한국 IP에서 차단되어 엉뚱한 값을
+  // 낼 수 있으므로 폴백에서 제외하고, 네이버 실패 시 곧바로 mock(샘플)으로.
   try {
     return await getNaverWorldQuote(input);
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn(`[naver-world] quote ${symbol} failed, falling back to Yahoo`, err);
-    }
-  }
-
-  try {
-    const result = await fetchYahooChart(symbol, "5d");
-    const meta = result.meta;
-    const price = meta.regularMarketPrice ?? meta.previousClose ?? 0;
-    const previousClose = meta.chartPreviousClose ?? meta.previousClose ?? price;
-    const change = price - previousClose;
-    const changePercent = previousClose ? (change / previousClose) * 100 : 0;
-    return {
-      ticker: displayTicker(meta.symbol ?? symbol),
-      symbol: meta.symbol ?? symbol,
-      name: meta.longName ?? meta.shortName ?? ticker,
-      market,
-      // 이 지점은 미국 종목 전용 (한국 종목은 위에서 네이버로 분기·반환됨)
-      price: Number(price.toFixed(4)),
-      previousClose: Number(previousClose.toFixed(4)),
-      change: Number(change.toFixed(4)),
-      changePercent: Number(changePercent.toFixed(2)),
-      currency: meta.currency ?? "USD",
-      volume: meta.regularMarketVolume ?? 0,
-      marketCap: meta.marketCap,
-      dayHigh: meta.regularMarketDayHigh,
-      dayLow: meta.regularMarketDayLow,
-      updatedAt: Date.now(),
-      source: "yahoo",
-    };
-  } catch (err) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn(`[yahoo] quote ${symbol} failed, using mock`, err);
+      console.warn(`[naver-world] quote ${symbol} failed, using mock`, err);
     }
     return mockQuote(input);
   }
@@ -108,12 +78,15 @@ export async function getHistory(input: string, range: Range = "6mo"): Promise<C
     }
   }
 
-  // 미국 주식: 네이버 해외증시 일봉 우선, 실패 시 Yahoo, 최종 mock
-  try {
-    return await getNaverWorldHistory(input, range);
-  } catch (err) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn(`[naver-world] history ${symbol} failed, falling back to Yahoo`, err);
+  // 미국 등 해외 주식: 네이버 해외증시 일봉 사용. 실패 시 곧바로 mock(샘플).
+  if (market === "US") {
+    try {
+      return await getNaverWorldHistory(input, range);
+    } catch (err) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`[naver-world] history ${symbol} failed, using mock`, err);
+      }
+      return mockHistory(input, rangeToDays(range));
     }
   }
 
