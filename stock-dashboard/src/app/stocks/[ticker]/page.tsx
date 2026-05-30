@@ -12,6 +12,7 @@ import { AIAnalysisPanel } from "@/components/detail/AIAnalysisPanel";
 import { FundamentalsCard } from "@/components/detail/FundamentalsCard";
 import { SourceBadge } from "@/components/detail/SourceBadge";
 import { BeginnerExplainCard } from "@/components/detail/BeginnerExplainCard";
+import { VerdictCard } from "@/components/detail/VerdictCard";
 import { AnalystReports } from "@/components/detail/AnalystReports";
 import { NewsList } from "@/components/dashboard/NewsList";
 import { Collapsible } from "@/components/ui/collapsible";
@@ -112,6 +113,10 @@ export default async function StockDetailPage({ params, searchParams }: PageProp
         </Suspense>
       </Collapsible>
 
+      <Suspense fallback={<div className="h-36 animate-pulse rounded-lg bg-zinc-100 dark:bg-zinc-900" />}>
+        <VerdictCard quote={quote} candles={candles} ticker={quote.ticker} market={quote.market} />
+      </Suspense>
+
       <Card>
         <CardHeader>
           <CardTitle>요약</CardTitle>
@@ -168,7 +173,7 @@ export default async function StockDetailPage({ params, searchParams }: PageProp
         </Suspense>
       </Collapsible>
 
-      <Collapsible title="AI 분석 리포트" subtitle="차트·재무·뉴스 종합 (로컬 LLM)">
+      <Collapsible title="AI 분석 리포트" subtitle="차트·재무·뉴스 종합 (로컬 LLM)" defaultOpen>
         <AIAnalysisPanel ticker={quote.ticker} market={quote.market} />
       </Collapsible>
 
