@@ -160,7 +160,7 @@ export default async function StockDetailPage({ params, searchParams }: PageProp
         </Suspense>
       </Collapsible>
 
-      <Collapsible title="애널리스트 리포트" subtitle="증권사 목표주가·리포트 (국내)">
+      <Collapsible title="애널리스트 리포트" subtitle="증권사 목표주가·리포트 (국내)" defaultOpen>
         <Suspense fallback={<div className="h-32 animate-pulse rounded-lg bg-zinc-100 dark:bg-zinc-900" />}>
           <AnalystReports ticker={quote.ticker} market={quote.market} currentPrice={quote.price} />
         </Suspense>
