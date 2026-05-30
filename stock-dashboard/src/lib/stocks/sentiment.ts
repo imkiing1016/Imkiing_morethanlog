@@ -1,5 +1,5 @@
 import type { Market, MarketSentiment, SentimentComponent } from "@/types/stock";
-import { getHistory, getQuote } from "./yahoo";
+import { getHistory, getQuote } from "./provider";
 import { ema, rsi } from "./indicators";
 
 const KR_INDICES = ["^KS11", "^KQ11"];

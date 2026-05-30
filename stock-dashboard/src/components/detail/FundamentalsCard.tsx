@@ -21,23 +21,21 @@ function fmtPct(v?: number, digits = 2): string {
 export async function FundamentalsCard({ ticker, market }: FundamentalsCardProps) {
   const f = await getFundamentals(ticker);
 
-  const rows: Array<[string, string, string?]> = [
-    ["P/E (TTM)", fmtNum(f.peRatio)],
-    ["Forward P/E", fmtNum(f.forwardPe)],
-    ["P/B", fmtNum(f.pbRatio)],
-    ["EPS (TTM)", fmtNum(f.eps)],
-    ["Forward EPS", fmtNum(f.forwardEps)],
+  // 네이버 제공 지표를 앞쪽에, 미제공(확장 예정) 지표는 값이 있을 때만 노출
+  const rows: Array<[string, string]> = [
+    ["PER", fmtNum(f.peRatio)],
+    ["PBR", fmtNum(f.pbRatio)],
+    ["EPS", fmtNum(f.eps)],
+    ["BPS", fmtNum(f.bps)],
     ["배당 수익률", fmtPct(f.dividendYield)],
     ["배당금", f.dividendRate != null ? formatCurrency(f.dividendRate, market) : "—"],
-    ["배당 성향", fmtPct(f.payoutRatio)],
-    ["베타 (β)", fmtNum(f.beta)],
-    ["ROE", fmtPct(f.roe)],
-    ["순이익률", fmtPct(f.profitMargin)],
-    ["매출 성장률", fmtPct(f.revenueGrowth)],
-    ["이익 성장률", fmtPct(f.earningsGrowth)],
-    ["부채비율 (D/E)", fmtNum(f.debtToEquity, 1)],
-    ["유동비율", fmtNum(f.currentRatio)],
   ];
+  if (f.roe != null) rows.push(["ROE", fmtPct(f.roe)]);
+  if (f.profitMargin != null) rows.push(["순이익률", fmtPct(f.profitMargin)]);
+  if (f.revenueGrowth != null) rows.push(["매출 성장률", fmtPct(f.revenueGrowth)]);
+  if (f.debtToEquity != null) rows.push(["부채비율 (D/E)", fmtNum(f.debtToEquity, 1)]);
+
+  const has52w = f.fiftyTwoWeekHigh != null || f.fiftyTwoWeekLow != null;
 
   return (
     <Card>
@@ -45,7 +43,7 @@ export async function FundamentalsCard({ ticker, market }: FundamentalsCardProps
         <CardTitle className="flex items-center justify-between">
           <span>펀더멘털</span>
           <span className="text-[10px] font-normal text-zinc-500">
-            {f.source === "yahoo" ? "Yahoo Finance" : "샘플 데이터"}
+            {f.source === "naver" ? "네이버 금융" : "샘플 데이터"}
           </span>
         </CardTitle>
       </CardHeader>
@@ -59,53 +57,28 @@ export async function FundamentalsCard({ ticker, market }: FundamentalsCardProps
           ))}
         </dl>
 
-        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-zinc-200 pt-3 dark:border-zinc-800 sm:grid-cols-4">
-          <div>
-            <div className="text-[10px] text-zinc-500">52주 최고</div>
-            <div className="text-sm tabular-nums">
-              {f.fiftyTwoWeekHigh != null ? formatCurrency(f.fiftyTwoWeekHigh, market) : "—"}
+        {has52w || f.marketCap != null ? (
+          <div className="mt-4 grid grid-cols-2 gap-3 border-t border-zinc-200 pt-3 dark:border-zinc-800 sm:grid-cols-3">
+            <div>
+              <div className="text-[10px] text-zinc-500">52주 최고</div>
+              <div className="text-sm tabular-nums">
+                {f.fiftyTwoWeekHigh != null ? formatCurrency(f.fiftyTwoWeekHigh, market) : "—"}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-zinc-500">52주 최저</div>
+              <div className="text-sm tabular-nums">
+                {f.fiftyTwoWeekLow != null ? formatCurrency(f.fiftyTwoWeekLow, market) : "—"}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-zinc-500">시가총액</div>
+              <div className="text-sm tabular-nums">
+                {f.marketCap != null ? formatCompactNumber(f.marketCap, market) : "—"}
+              </div>
             </div>
           </div>
-          <div>
-            <div className="text-[10px] text-zinc-500">52주 최저</div>
-            <div className="text-sm tabular-nums">
-              {f.fiftyTwoWeekLow != null ? formatCurrency(f.fiftyTwoWeekLow, market) : "—"}
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] text-zinc-500">50일 평균</div>
-            <div className="text-sm tabular-nums">
-              {f.fiftyDayAvg != null ? formatCurrency(f.fiftyDayAvg, market) : "—"}
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] text-zinc-500">200일 평균</div>
-            <div className="text-sm tabular-nums">
-              {f.twoHundredDayAvg != null ? formatCurrency(f.twoHundredDayAvg, market) : "—"}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-zinc-200 pt-3 dark:border-zinc-800 sm:grid-cols-3">
-          <div>
-            <div className="text-[10px] text-zinc-500">매출 (TTM)</div>
-            <div className="text-sm tabular-nums">
-              {f.totalRevenue != null ? formatCompactNumber(f.totalRevenue, market) : "—"}
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] text-zinc-500">잉여현금흐름</div>
-            <div className="text-sm tabular-nums">
-              {f.freeCashflow != null ? formatCompactNumber(f.freeCashflow, market) : "—"}
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] text-zinc-500">총부채</div>
-            <div className="text-sm tabular-nums">
-              {f.totalDebt != null ? formatCompactNumber(f.totalDebt, market) : "—"}
-            </div>
-          </div>
-        </div>
+        ) : null}
       </CardContent>
     </Card>
   );

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getQuotes } from "@/lib/stocks/yahoo";
+import { getQuotes } from "@/lib/stocks/provider";
 
 export const dynamic = "force-dynamic";
 

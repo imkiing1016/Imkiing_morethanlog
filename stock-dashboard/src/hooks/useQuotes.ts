@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Quote, WatchItem } from "@/types/stock";
-import { toYahooSymbol } from "@/lib/stocks/normalize";
+import { toFullSymbol } from "@/lib/stocks/normalize";
 
 const REFRESH_MS = 30_000;
 
@@ -21,7 +21,7 @@ export function useQuotes(items: WatchItem[], enabled = true): UseQuotesState & 
     refreshedAt: null,
   });
   const mounted = useRef(true);
-  const symbolsKey = items.map((i) => toYahooSymbol(i.ticker, i.market)).sort().join(",");
+  const symbolsKey = items.map((i) => toFullSymbol(i.ticker, i.market)).sort().join(",");
 
   useEffect(() => {
     mounted.current = true;

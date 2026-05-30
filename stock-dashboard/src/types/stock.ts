@@ -20,7 +20,7 @@ export interface Quote {
   source?: QuoteSource;
 }
 
-export type QuoteSource = "naver" | "yahoo" | "mock";
+export type QuoteSource = "naver" | "mock";
 
 export interface Candle {
   time: number;

@@ -29,7 +29,9 @@ interface AutoCompleteResponse {
 }
 
 /** 티커 -> 네이버 로이터코드(예: AAPL -> AAPL.O). 해석 실패 시 null */
-async function resolveReutersCode(ticker: string): Promise<{ code: string; name?: string } | null> {
+export async function resolveReutersCode(
+  ticker: string,
+): Promise<{ code: string; name?: string } | null> {
   const q = ticker.trim().toUpperCase();
   const url = `https://m.stock.naver.com/front-api/search/autoComplete?query=${encodeURIComponent(
     q,

@@ -5,7 +5,7 @@ import { Bell, BellRing } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAlerts } from "@/stores/alerts";
 import type { Quote, WatchItem } from "@/types/stock";
-import { toYahooSymbol } from "@/lib/stocks/normalize";
+import { toFullSymbol } from "@/lib/stocks/normalize";
 import { formatCurrency } from "@/lib/format";
 
 interface AlertMonitorProps {
@@ -36,7 +36,7 @@ export function AlertMonitor({ items, quotes }: AlertMonitorProps) {
     for (const item of items) {
       const q = quoteMap.get(`${item.ticker}|${item.market}`);
       if (!q) continue;
-      const key = toYahooSymbol(item.ticker, item.market);
+      const key = toFullSymbol(item.ticker, item.market);
       const prev = previousQuotes.current.get(key);
       previousQuotes.current.set(key, q.price);
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getHistory, getQuote } from "@/lib/stocks/yahoo";
+import { getHistory, getQuote } from "@/lib/stocks/provider";
 import { getFundamentals } from "@/lib/stocks/fundamentals";
 import { getStockNews } from "@/lib/stocks/news";
 import { buildAnalysis } from "@/lib/ai/analyze";

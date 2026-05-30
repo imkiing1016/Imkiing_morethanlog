@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { getHistory, getQuote } from "@/lib/stocks/yahoo";
+import { getHistory, getQuote } from "@/lib/stocks/provider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { changeBg, formatCompactNumber, formatCurrency, formatPercent } from "@/lib/format";

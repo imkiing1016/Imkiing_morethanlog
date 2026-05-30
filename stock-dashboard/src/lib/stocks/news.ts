@@ -1,4 +1,8 @@
 import { normalizeInput } from "./normalize";
+import { resolveReutersCode } from "./naver-world";
+
+// 뉴스 - 네이버 금융 뉴스 API (비공식). 한국 IP에서 동작.
+// 종목별 뉴스: 국내 6자리 코드 / 해외 로이터코드 기반.
 
 export interface NewsItem {
   title: string;
@@ -8,63 +12,86 @@ export interface NewsItem {
   description?: string;
 }
 
-const YAHOO_HEADERS = {
+const NAVER_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-  Accept: "application/rss+xml,application/xml,text/xml,*/*",
+  Accept: "application/json,text/plain,*/*",
+  Referer: "https://m.stock.naver.com/",
 };
 
-function decodeEntities(text: string): string {
-  return text
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'");
+interface NaverNewsItem {
+  title?: string;
+  officeName?: string;
+  datetime?: string; // "20260529160000" 형태
+  bodyText?: string;
+  linkUrl?: string;
+  articleId?: string;
+  officeId?: string;
 }
 
-function parseRss(xml: string): NewsItem[] {
-  const items: NewsItem[] = [];
-  const itemRegex = /<item\b[^>]*>([\s\S]*?)<\/item>/g;
-  let match: RegExpExecArray | null;
-  while ((match = itemRegex.exec(xml)) !== null) {
-    const block = match[1];
-    const title = block.match(/<title>([\s\S]*?)<\/title>/)?.[1] ?? "";
-    const link = block.match(/<link>([\s\S]*?)<\/link>/)?.[1] ?? "";
-    const pubDate = block.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] ?? "";
-    const description = block.match(/<description>([\s\S]*?)<\/description>/)?.[1] ?? "";
-    const source = block.match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1];
-    if (!title || !link) continue;
-    items.push({
-      title: decodeEntities(title).trim(),
-      link: decodeEntities(link).trim(),
-      publishedAt: pubDate ? new Date(pubDate).getTime() : Date.now(),
-      source: source ? decodeEntities(source).trim() : undefined,
-      description: description ? decodeEntities(description).replace(/<[^>]+>/g, "").slice(0, 200).trim() : undefined,
-    });
-  }
-  return items;
+interface NaverNewsBody {
+  title?: string;
+  items?: NaverNewsItem[];
+}
+
+/** "20260529160000" -> epoch ms */
+function parseNaverDate(s?: string): number {
+  if (!s) return Date.now();
+  const d = s.replace(/\D/g, "");
+  if (d.length < 8) return Date.now();
+  const y = Number(d.slice(0, 4));
+  const mo = Number(d.slice(4, 6));
+  const da = Number(d.slice(6, 8));
+  const h = Number(d.slice(8, 10) || "0");
+  const mi = Number(d.slice(10, 12) || "0");
+  const t = new Date(y, mo - 1, da, h, mi).getTime();
+  return Number.isFinite(t) ? t : Date.now();
+}
+
+function mapNaverItems(raw: NaverNewsItem[], limit: number): NewsItem[] {
+  return raw
+    .filter((n) => n.title)
+    .slice(0, limit)
+    .map((n) => ({
+      title: (n.title ?? "").replace(/<[^>]+>/g, "").trim(),
+      link:
+        n.linkUrl ??
+        (n.officeId && n.articleId
+          ? `https://n.news.naver.com/mnews/article/${n.officeId}/${n.articleId}`
+          : "https://m.stock.naver.com/"),
+      publishedAt: parseNaverDate(n.datetime),
+      source: n.officeName,
+      description: n.bodyText ? n.bodyText.replace(/<[^>]+>/g, "").slice(0, 200).trim() : undefined,
+    }));
 }
 
 export async function getStockNews(input: string, limit = 8): Promise<NewsItem[]> {
   if (process.env.STOCK_DATA_MODE === "mock") return mockNews(input, limit);
-  const { symbol, market } = normalizeInput(input);
-  const region = market === "KR" ? "KR" : "US";
-  const lang = market === "KR" ? "ko-KR" : "en-US";
-  const url = `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${encodeURIComponent(
-    symbol,
-  )}&region=${region}&lang=${lang}`;
+  const { market, symbol } = normalizeInput(input);
   try {
-    const res = await fetch(url, { headers: YAHOO_HEADERS, next: { revalidate: 600 } });
-    if (!res.ok) throw new Error(`Yahoo news ${res.status}`);
-    const xml = await res.text();
-    const items = parseRss(xml);
-    return items.slice(0, limit);
+    let url: string;
+    if (market === "KR") {
+      const code = symbol.replace(/\.(KS|KQ)$/i, "");
+      url = `https://m.stock.naver.com/api/news/stock/${encodeURIComponent(code)}?pageSize=${limit}&page=1`;
+    } else {
+      const resolved = await resolveReutersCode(symbol);
+      if (!resolved) throw new Error(`news: cannot resolve ${symbol}`);
+      url = `https://m.stock.naver.com/api/news/worldStock/${encodeURIComponent(
+        resolved.code,
+      )}?pageSize=${limit}&page=1`;
+    }
+    const res = await fetch(url, { headers: NAVER_HEADERS, next: { revalidate: 600 } });
+    if (!res.ok) throw new Error(`Naver news ${res.status}`);
+    const json = (await res.json()) as NaverNewsBody[] | NaverNewsBody;
+    // 응답이 [{items:[...]}] 또는 {items:[...]} 형태일 수 있음
+    const groups = Array.isArray(json) ? json : [json];
+    const items = groups.flatMap((g) => g.items ?? []);
+    const mapped = mapNaverItems(items, limit);
+    if (mapped.length === 0) throw new Error("news: empty");
+    return mapped;
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn(`[yahoo] news ${symbol} failed, using mock`, err);
+      console.warn(`[naver] news ${symbol} failed, using mock`, err);
     }
     return mockNews(input, limit);
   }
@@ -72,23 +99,28 @@ export async function getStockNews(input: string, limit = 8): Promise<NewsItem[]
 
 export async function getMarketNews(limit = 10): Promise<NewsItem[]> {
   if (process.env.STOCK_DATA_MODE === "mock") return mockMarketNews(limit);
-  const url = "https://feeds.finance.yahoo.com/rss/2.0/headline?region=US&lang=en-US&category=generalnews";
   try {
-    const res = await fetch(url, { headers: YAHOO_HEADERS, next: { revalidate: 600 } });
-    if (!res.ok) throw new Error(`Yahoo market news ${res.status}`);
-    const xml = await res.text();
-    const items = parseRss(xml);
-    return items.slice(0, limit);
+    // 주요 증시 뉴스 (네이버 금융 뉴스 - 시황)
+    const url = `https://m.stock.naver.com/api/news/mainNews?pageSize=${limit}&page=1`;
+    const res = await fetch(url, { headers: NAVER_HEADERS, next: { revalidate: 600 } });
+    if (!res.ok) throw new Error(`Naver market news ${res.status}`);
+    const json = (await res.json()) as NaverNewsBody[] | NaverNewsBody;
+    const groups = Array.isArray(json) ? json : [json];
+    const items = groups.flatMap((g) => g.items ?? []);
+    const mapped = mapNaverItems(items, limit);
+    if (mapped.length === 0) throw new Error("market news: empty");
+    return mapped;
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn(`[yahoo] market news failed, using mock`, err);
+      console.warn(`[naver] market news failed, using mock`, err);
     }
     return mockMarketNews(limit);
   }
 }
 
 function mockNews(input: string, limit: number): NewsItem[] {
-  const seed = input.toUpperCase();
+  const { ticker } = normalizeInput(input);
+  const seed = ticker.toUpperCase();
   const now = Date.now();
   const templates = [
     `${seed} 분기 실적, 시장 예상치 상회`,
@@ -102,10 +134,10 @@ function mockNews(input: string, limit: number): NewsItem[] {
   ];
   return templates.slice(0, limit).map((title, i) => ({
     title,
-    link: `https://finance.yahoo.com/quote/${encodeURIComponent(seed)}`,
+    link: "https://m.stock.naver.com/",
     publishedAt: now - i * 3600 * 1000,
     source: "샘플 뉴스",
-    description: "샘플 뉴스 데이터입니다. 실제 환경에서는 Yahoo Finance RSS를 통해 최신 뉴스가 표시됩니다.",
+    description: "샘플 뉴스 데이터입니다. 실제 환경에서는 네이버 금융 뉴스가 표시됩니다.",
   }));
 }
 

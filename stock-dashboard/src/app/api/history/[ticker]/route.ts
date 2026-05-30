@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getHistory } from "@/lib/stocks/yahoo";
+import { getHistory } from "@/lib/stocks/provider";
 import type { Range } from "@/types/stock";
 
 export const dynamic = "force-dynamic";

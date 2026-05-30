@@ -3,7 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CompareChart, COLORS } from "@/components/compare/CompareChart";
 import { CompareControls } from "@/components/compare/CompareControls";
-import { getHistory, getQuote } from "@/lib/stocks/yahoo";
+import { getHistory, getQuote } from "@/lib/stocks/provider";
 import { changeBg, formatCompactNumber, formatCurrency, formatPercent } from "@/lib/format";
 import type { Range } from "@/types/stock";
 

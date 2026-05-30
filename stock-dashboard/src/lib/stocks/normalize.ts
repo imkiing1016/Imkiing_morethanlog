@@ -10,7 +10,7 @@ export function detectMarket(input: string): Market {
   return "US";
 }
 
-export function toYahooSymbol(ticker: string, market: Market): string {
+export function toFullSymbol(ticker: string, market: Market): string {
   const trimmed = ticker.trim().toUpperCase();
   if (market === "US") return trimmed;
   if (KR_SUFFIX_RE.test(trimmed)) return trimmed;
@@ -23,7 +23,7 @@ export function displayTicker(symbol: string): string {
 
 export function normalizeInput(input: string): { ticker: string; market: Market; symbol: string } {
   const market = detectMarket(input);
-  const symbol = toYahooSymbol(input, market);
+  const symbol = toFullSymbol(input, market);
   const ticker = displayTicker(symbol);
   return { ticker, market, symbol };
 }

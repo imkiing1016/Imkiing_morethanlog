@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { changeBg, formatCompactNumber, formatCurrency, formatPercent } from "@/lib/format";
-import { toYahooSymbol } from "@/lib/stocks/normalize";
+import { toFullSymbol } from "@/lib/stocks/normalize";
 import { SourceBadge } from "@/components/detail/SourceBadge";
 
 interface StockCardProps {
@@ -19,7 +19,7 @@ interface StockCardProps {
 }
 
 export function StockCard({ item, quote, loading, onRemove, onOpenAlerts }: StockCardProps) {
-  const symbol = toYahooSymbol(item.ticker, item.market);
+  const symbol = toFullSymbol(item.ticker, item.market);
   const displayName = quote?.name ?? item.name ?? item.ticker;
   const hasTargets = item.targetUp != null || item.targetDown != null;
 
