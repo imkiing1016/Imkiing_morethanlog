@@ -26,11 +26,32 @@ export async function getQuote(input: string): Promise<Quote> {
   }
 }
 
+/**
+ * 동시 요청 수를 제한해 순차 배치로 처리.
+ * 네이버는 동시 다발 요청을 rate-limit으로 막아 mock 폴백을 유발하므로
+ * 관심목록 등 다건 조회 시 동시성을 낮춰 실시간 데이터 적중률을 높인다.
+ */
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const idx = cursor++;
+      results[idx] = await fn(items[idx]);
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 export async function getQuotes(inputs: string[]): Promise<Quote[]> {
-  const settled = await Promise.allSettled(inputs.map((i) => getQuote(i)));
-  return settled
-    .filter((r): r is PromiseFulfilledResult<Quote> => r.status === "fulfilled")
-    .map((r) => r.value);
+  // 동시 3건까지만 (getQuote는 내부적으로 mock 폴백하므로 reject되지 않음)
+  return mapLimit(inputs, 3, (i) => getQuote(i));
 }
 
 export async function getHistory(input: string, range: Range = "6mo"): Promise<Candle[]> {
