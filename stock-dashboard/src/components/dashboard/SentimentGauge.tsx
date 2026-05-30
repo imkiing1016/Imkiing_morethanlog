@@ -1,13 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RefreshCw, GraduationCap } from "lucide-react";
+import { RefreshCw, GraduationCap, Newspaper, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { Market, MarketSentiment } from "@/types/stock";
 
 interface SentimentGaugeProps {
   market: Market;
+}
+
+interface SentimentNews {
+  title: string;
+  link: string;
+  source?: string;
+}
+
+function safeHref(link: string | undefined, title: string): string {
+  if (!link || link === "#" || !/^https?:\/\//.test(link)) {
+    return `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(title)}`;
+  }
+  return link;
 }
 
 function scoreColor(score: number): string {
@@ -93,6 +106,7 @@ function buildSentimentExplain(data: MarketSentiment): SentimentExplain {
 
 export function SentimentGauge({ market }: SentimentGaugeProps) {
   const [data, setData] = useState<MarketSentiment | null>(null);
+  const [news, setNews] = useState<SentimentNews[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -100,10 +114,16 @@ export function SentimentGauge({ market }: SentimentGaugeProps) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/sentiment?market=${market}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`status ${res.status}`);
-      const json = (await res.json()) as MarketSentiment;
-      setData(json);
+      const [sRes, nRes] = await Promise.all([
+        fetch(`/api/sentiment?market=${market}`, { cache: "no-store" }),
+        fetch(`/api/news?limit=4`, { cache: "no-store" }).catch(() => null),
+      ]);
+      if (!sRes.ok) throw new Error(`status ${sRes.status}`);
+      setData((await sRes.json()) as MarketSentiment);
+      if (nRes && nRes.ok) {
+        const nj = (await nRes.json()) as { items: SentimentNews[] };
+        setNews(nj.items ?? []);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -248,8 +268,36 @@ export function SentimentGauge({ market }: SentimentGaugeProps) {
                     {ex.biggest ? (
                       <p className="mt-2 text-[11px] font-medium text-zinc-500">{ex.biggest}</p>
                     ) : null}
-                    <p className="mt-1 text-[10px] text-zinc-400">
-                      ※ 군중심리 참고용이며 미래를 보장하지 않아요.
+
+                    {news.length > 0 ? (
+                      <div className="mt-3 border-t border-violet-500/15 pt-2">
+                        <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500">
+                          <Newspaper className="h-3 w-3" /> 심리에 영향을 줄 수 있는 최근 이슈
+                        </div>
+                        <ul className="space-y-1">
+                          {news.slice(0, 4).map((n, i) => (
+                            <li key={i}>
+                              <a
+                                href={safeHref(n.link, n.title)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="group flex items-start gap-1.5 text-[11px] leading-snug text-zinc-600 hover:text-violet-500 dark:text-zinc-300"
+                              >
+                                <span className="text-violet-500">·</span>
+                                <span className="line-clamp-1 flex-1">{n.title}</span>
+                                <ExternalLink className="mt-0.5 h-2.5 w-2.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="mt-1 text-[10px] text-zinc-400">
+                          실적·금리·환율·정책 같은 이슈는 시장 분위기(심리)에 영향을 줄 수 있어요.
+                        </p>
+                      </div>
+                    ) : null}
+
+                    <p className="mt-2 text-[10px] text-zinc-400">
+                      ※ 점수는 지수의 가격·추세·변동성으로 계산되며(뉴스는 참고용), 미래를 보장하지 않아요.
                     </p>
                   </div>
                 );
