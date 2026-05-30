@@ -19,24 +19,40 @@ const NAVER_HEADERS = {
   Referer: "https://m.stock.naver.com/",
 };
 
-interface NaverNewsItem {
-  title?: string;
-  officeName?: string;
-  datetime?: string; // "20260529160000" 형태
-  bodyText?: string;
-  linkUrl?: string;
-  articleId?: string;
-  officeId?: string;
+type Json = Record<string, unknown>;
+
+/** HTML 엔티티/태그 제거 (&quot; &amp; &#39; 등) */
+function clean(text: string): string {
+  return text
+    .replace(/<[^>]+>/g, "")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .trim();
 }
 
-interface NaverNewsBody {
-  title?: string;
-  items?: NaverNewsItem[];
+function str(obj: Json, keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === "string" && v.trim()) return v;
+    if (typeof v === "number") return String(v);
+  }
+  return undefined;
 }
 
-/** "20260529160000" -> epoch ms */
+/** "20260529160000" / "2026-05-29T16:00:00" / epoch -> ms */
 function parseNaverDate(s?: string): number {
   if (!s) return Date.now();
+  if (/^\d{13}$/.test(s)) return Number(s);
+  if (s.includes("-") || s.includes("T")) {
+    const t = new Date(s).getTime();
+    if (Number.isFinite(t)) return t;
+  }
   const d = s.replace(/\D/g, "");
   if (d.length < 8) return Date.now();
   const y = Number(d.slice(0, 4));
@@ -48,21 +64,56 @@ function parseNaverDate(s?: string): number {
   return Number.isFinite(t) ? t : Date.now();
 }
 
-function mapNaverItems(raw: NaverNewsItem[], limit: number): NewsItem[] {
+/** 응답(JSON)에서 뉴스처럼 보이는 항목 배열을 재귀적으로 찾는다 */
+function findNewsArray(node: unknown, depth = 0): Json[] {
+  if (depth > 5 || node == null) return [];
+  if (Array.isArray(node)) {
+    const looksLikeNews = node.some(
+      (it) => it && typeof it === "object" && str(it as Json, ["title", "headline", "titleText"]),
+    );
+    if (looksLikeNews) return node as Json[];
+    return node.flatMap((n) => findNewsArray(n, depth + 1));
+  }
+  if (typeof node === "object") {
+    return Object.values(node as Json).flatMap((v) => findNewsArray(v, depth + 1));
+  }
+  return [];
+}
+
+function mapNaverItems(raw: Json[], limit: number): NewsItem[] {
   return raw
-    .filter((n) => n.title)
-    .slice(0, limit)
-    .map((n) => ({
-      title: (n.title ?? "").replace(/<[^>]+>/g, "").trim(),
-      link:
-        n.linkUrl ??
-        (n.officeId && n.articleId
-          ? `https://n.news.naver.com/mnews/article/${n.officeId}/${n.articleId}`
-          : "https://m.stock.naver.com/"),
-      publishedAt: parseNaverDate(n.datetime),
-      source: n.officeName,
-      description: n.bodyText ? n.bodyText.replace(/<[^>]+>/g, "").slice(0, 200).trim() : undefined,
-    }));
+    .map((n) => {
+      const title = str(n, ["title", "headline", "titleText"]);
+      if (!title) return null;
+      const officeId = str(n, ["officeId", "pressId"]);
+      const articleId = str(n, ["articleId", "id", "newsId"]);
+      const link =
+        str(n, ["linkUrl", "url", "bodyUrl", "mobileUrl"]) ??
+        (officeId && articleId
+          ? `https://n.news.naver.com/mnews/article/${officeId}/${articleId}`
+          : undefined);
+      const body = str(n, ["bodyText", "summary", "body", "content"]);
+      const cleanTitle = clean(title);
+      return {
+        title: cleanTitle,
+        link: link ?? `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(cleanTitle)}`,
+        publishedAt: parseNaverDate(str(n, ["datetime", "date", "createdDateTime", "officeDateTime", "dateTime"])),
+        source: str(n, ["officeName", "pressName", "mediaName", "source"]),
+        description: body ? clean(body).slice(0, 200) : undefined,
+      } as NewsItem;
+    })
+    .filter((n): n is NewsItem => n !== null)
+    .slice(0, limit);
+}
+
+async function fetchNaverNews(url: string, limit: number): Promise<NewsItem[]> {
+  const res = await fetch(url, { headers: NAVER_HEADERS, next: { revalidate: 600 } });
+  if (!res.ok) throw new Error(`Naver news ${res.status}`);
+  const json = (await res.json()) as unknown;
+  const items = findNewsArray(json);
+  const mapped = mapNaverItems(items, limit);
+  if (mapped.length === 0) throw new Error("news: empty");
+  return mapped;
 }
 
 export async function getStockNews(input: string, limit = 8): Promise<NewsItem[]> {
@@ -72,23 +123,17 @@ export async function getStockNews(input: string, limit = 8): Promise<NewsItem[]
     let url: string;
     if (market === "KR") {
       const code = symbol.replace(/\.(KS|KQ)$/i, "");
-      url = `https://m.stock.naver.com/api/news/stock/${encodeURIComponent(code)}?pageSize=${limit}&page=1`;
+      url = `https://m.stock.naver.com/front-api/news/stock/list?itemCode=${encodeURIComponent(
+        code,
+      )}&page=1&pageSize=${limit}`;
     } else {
       const resolved = await resolveReutersCode(symbol);
       if (!resolved) throw new Error(`news: cannot resolve ${symbol}`);
-      url = `https://m.stock.naver.com/api/news/worldStock/${encodeURIComponent(
+      url = `https://m.stock.naver.com/front-api/news/worldStock/list?reutersCode=${encodeURIComponent(
         resolved.code,
-      )}?pageSize=${limit}&page=1`;
+      )}&page=1&pageSize=${limit}`;
     }
-    const res = await fetch(url, { headers: NAVER_HEADERS, next: { revalidate: 600 } });
-    if (!res.ok) throw new Error(`Naver news ${res.status}`);
-    const json = (await res.json()) as NaverNewsBody[] | NaverNewsBody;
-    // 응답이 [{items:[...]}] 또는 {items:[...]} 형태일 수 있음
-    const groups = Array.isArray(json) ? json : [json];
-    const items = groups.flatMap((g) => g.items ?? []);
-    const mapped = mapNaverItems(items, limit);
-    if (mapped.length === 0) throw new Error("news: empty");
-    return mapped;
+    return await fetchNaverNews(url, limit);
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
       console.warn(`[naver] news ${symbol} failed, using mock`, err);
@@ -99,17 +144,11 @@ export async function getStockNews(input: string, limit = 8): Promise<NewsItem[]
 
 export async function getMarketNews(limit = 10): Promise<NewsItem[]> {
   if (process.env.STOCK_DATA_MODE === "mock") return mockMarketNews(limit);
+  // 시황 전용 피드 엔드포인트가 확인되지 않아, 시총 1위(삼성전자=005930) 뉴스 피드를
+  // 시장 뉴스로 사용. 해당 피드에는 코스피/거시/대형주 시황 기사가 다수 포함됨.
   try {
-    // 주요 증시 뉴스 (네이버 금융 뉴스 - 시황)
-    const url = `https://m.stock.naver.com/api/news/mainNews?pageSize=${limit}&page=1`;
-    const res = await fetch(url, { headers: NAVER_HEADERS, next: { revalidate: 600 } });
-    if (!res.ok) throw new Error(`Naver market news ${res.status}`);
-    const json = (await res.json()) as NaverNewsBody[] | NaverNewsBody;
-    const groups = Array.isArray(json) ? json : [json];
-    const items = groups.flatMap((g) => g.items ?? []);
-    const mapped = mapNaverItems(items, limit);
-    if (mapped.length === 0) throw new Error("market news: empty");
-    return mapped;
+    const url = `https://m.stock.naver.com/front-api/news/stock/list?itemCode=005930&page=1&pageSize=${limit}`;
+    return await fetchNaverNews(url, limit);
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
       console.warn(`[naver] market news failed, using mock`, err);
