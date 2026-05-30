@@ -106,9 +106,11 @@ export default async function StockDetailPage({ params, searchParams }: PageProp
         </CardContent>
       </Card>
 
-      <Suspense fallback={<div className="h-40 animate-pulse rounded-lg bg-zinc-100 dark:bg-zinc-900" />}>
-        <BeginnerExplainCard quote={quote} candles={candles} ticker={quote.ticker} market={quote.market} />
-      </Suspense>
+      <Collapsible title="초보자를 위한 쉬운 해설" subtitle="가격·거래량·뉴스를 쉬운 말로" defaultOpen>
+        <Suspense fallback={<div className="h-40 animate-pulse rounded-lg bg-zinc-100 dark:bg-zinc-900" />}>
+          <BeginnerExplainCard quote={quote} candles={candles} ticker={quote.ticker} market={quote.market} />
+        </Suspense>
+      </Collapsible>
 
       <Card>
         <CardHeader>
