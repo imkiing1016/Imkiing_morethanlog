@@ -7,6 +7,7 @@ import {
   Scale,
   Info,
   GraduationCap,
+  Zap,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getStockNews } from "@/lib/stocks/news";
@@ -22,6 +23,7 @@ interface BeginnerExplainCardProps {
 }
 
 const ICONS: Record<ExplainIcon, typeof TrendingUp> = {
+  summary: Zap,
   price: TrendingUp,
   volume: BarChart3,
   trend: Activity,
@@ -66,8 +68,10 @@ export async function BeginnerExplainCard({ quote, candles, ticker, market }: Be
               <div
                 key={i}
                 className={`rounded-lg border p-3 ${toneClasses(item.tone)} ${
-                  item.icon === "caution" || item.icon === "news" ? "sm:col-span-2" : ""
-                }`}
+                  item.icon === "summary" || item.icon === "caution" || item.icon === "news"
+                    ? "sm:col-span-2"
+                    : ""
+                } ${item.icon === "summary" ? "border-violet-500/30 bg-violet-500/5" : ""}`}
               >
                 <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold">
                   <Icon className={`h-3.5 w-3.5 ${iconColor(item.tone)}`} />

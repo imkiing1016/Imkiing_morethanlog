@@ -18,29 +18,77 @@ function scoreColor(score: number): string {
   return "#ef4444";
 }
 
-// 초보자를 위한 시장 심리 쉬운 해설
-function buildSentimentExplain(data: MarketSentiment): string {
-  const s = data.score;
-  let base: string;
-  if (s >= 75)
-    base = `지금 시장 심리는 ${s.toFixed(0)}점으로 '매우 낙관(탐욕)' 상태예요. 투자자들이 적극적으로 사는 분위기지만, 과열되면 작은 악재에도 조정(하락)이 올 수 있어 욕심은 조심하는 게 좋아요.`;
-  else if (s >= 60)
-    base = `지금 시장 심리는 ${s.toFixed(0)}점으로 '낙관' 쪽이에요. 전반적으로 분위기가 좋은 편이라 매수세가 우위인 상태예요.`;
-  else if (s >= 45)
-    base = `지금 시장 심리는 ${s.toFixed(0)}점으로 '중립'이에요. 살지 팔지 눈치 보는 관망 분위기로, 방향이 정해지길 기다리는 구간일 때가 많아요.`;
-  else if (s >= 30)
-    base = `지금 시장 심리는 ${s.toFixed(0)}점으로 '신중·불안' 쪽이에요. 투자자들이 위험을 피하려는 분위기라 변동성이 커질 수 있어요.`;
-  else
-    base = `지금 시장 심리는 ${s.toFixed(0)}점으로 '공포' 상태예요. 다들 불안해하는 구간인데, 과도한 공포는 반대로 저가 매수 기회가 되기도 해요(역발상).`;
+interface SentimentReason {
+  label: string;
+  value: number;
+  text: string;
+}
+interface SentimentExplain {
+  summary: string;
+  reasons: SentimentReason[];
+  biggest: string;
+}
 
-  const sorted = [...data.components].sort((a, b) => b.value - a.value);
-  const best = sorted[0];
-  const worst = sorted[sorted.length - 1];
-  let detail = "";
-  if (best && worst && best.key !== worst.key) {
-    detail = ` 가장 긍정적인 요인은 '${best.label}', 가장 약한 요인은 '${worst.label}'이에요.`;
+// 각 요인(모멘텀)이 "왜 이 점수인지" 상황을 풀이
+function explainComponent(key: string, value: number, description: string): string {
+  const hi = value >= 60;
+  const lo = value <= 40;
+  switch (key) {
+    case "daily":
+      if (hi) return `오늘 주요 지수가 ${description} 수준으로 올라, 당일 분위기가 좋아요. 지수가 오르면 투자심리도 함께 좋아져요.`;
+      if (lo) return `오늘 주요 지수가 ${description}로 부진해, 당일 분위기가 가라앉았어요.`;
+      return `오늘 지수 등락(${description})이 크지 않아 당일 영향은 중립이에요.`;
+    case "trend":
+      if (hi) return `단기 평균선(20일)이 중기선(60일)보다 위(${description})에 있어요. 상승 추세(골든크로스 성격)라 긍정적으로 봐요.`;
+      if (lo) return `단기 평균선이 중기선보다 아래(${description})에 있어요. 약세 추세라 부정적 신호예요.`;
+      return `단기·중기 평균선이 거의 붙어 있어(${description}) 방향성이 뚜렷하지 않아요.`;
+    case "momentum":
+      if (value >= 70) return `${description}로 '과매수' 상태예요. 단기간 많이 올라 과열됐다는 뜻이라, 점수는 높지만 조정 가능성도 함께 봐야 해요.`;
+      if (value <= 30) return `${description}로 '과매도' 상태예요. 단기간 많이 빠져 침체된 구간이라, 기술적 반등이 나올 수도 있어요.`;
+      return `${description}로 과열도 침체도 아닌 중립 모멘텀이에요.`;
+    case "vix":
+      if (hi) return `공포지수(${description})가 낮아 시장이 안정적이에요. VIX가 낮을수록 투자자들의 불안이 적다는 뜻이에요.`;
+      if (lo) return `공포지수(${description})가 높아 불안이 큰 상태예요. 급락·불확실성이 커질 때 VIX가 치솟아요.`;
+      return `공포지수(${description})는 보통 수준이에요.`;
+    case "volatility":
+      if (hi) return `지수 변동폭(${description})이 작아 시장이 차분해요. 출렁임이 작으면 심리가 안정적이에요.`;
+      if (lo) return `지수 변동폭(${description})이 커서 시장이 불안정해요. 급등락이 크면 심리도 흔들려요.`;
+      return `지수 변동폭(${description})은 보통 수준이에요.`;
+    default:
+      return description;
   }
-  return base + detail + " (이 점수는 군중심리 참고용이며, 미래를 보장하지 않아요)";
+}
+
+// 초보자를 위한 시장 심리 쉬운 해설 (점수가 왜 이런지 + 요인별 원인)
+function buildSentimentExplain(data: MarketSentiment): SentimentExplain {
+  const s = data.score;
+  let summary: string;
+  if (s >= 75)
+    summary = `종합 ${s.toFixed(0)}점 '매우 낙관(탐욕)'. 투자자들이 적극적으로 사는 분위기지만, 과열되면 작은 악재에도 조정이 올 수 있어요. 점수는 아래 요인들을 가중 평균해 계산돼요.`;
+  else if (s >= 60)
+    summary = `종합 ${s.toFixed(0)}점 '낙관'. 전반적으로 분위기가 좋아 매수세가 우위예요. 점수는 아래 요인들을 가중 평균한 결과예요.`;
+  else if (s >= 45)
+    summary = `종합 ${s.toFixed(0)}점 '중립'. 살지 팔지 관망하는 분위기예요. 아래 요인들이 서로 엇갈려 중립이 됐어요.`;
+  else if (s >= 30)
+    summary = `종합 ${s.toFixed(0)}점 '신중·불안'. 위험을 피하려는 분위기로 변동성이 커질 수 있어요. 아래 요인들이 점수를 끌어내렸어요.`;
+  else
+    summary = `종합 ${s.toFixed(0)}점 '공포'. 다들 불안해하는 구간인데, 과도한 공포는 반대로 저가 매수 기회가 되기도 해요(역발상). 아래 요인들이 점수를 크게 낮췄어요.`;
+
+  const reasons = data.components.map((c) => ({
+    label: c.label,
+    value: c.value,
+    text: explainComponent(c.key, c.value, c.description),
+  }));
+
+  // 점수에 가장 크게 기여(가중치×편차)한 요인
+  const contrib = data.components
+    .map((c) => ({ label: c.label, impact: (c.value - 50) * c.weight }))
+    .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))[0];
+  const biggest = contrib
+    ? `이번 점수에 가장 큰 영향을 준 건 '${contrib.label}'(${contrib.impact >= 0 ? "끌어올림" : "끌어내림"})이에요.`
+    : "";
+
+  return { summary, reasons, biggest };
 }
 
 export function SentimentGauge({ market }: SentimentGaugeProps) {
@@ -172,14 +220,40 @@ export function SentimentGauge({ market }: SentimentGaugeProps) {
               ))}
             </div>
             {data ? (
-              <div className="w-full rounded-lg border border-violet-500/20 bg-violet-500/5 p-3">
-                <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-violet-500">
-                  <GraduationCap className="h-3.5 w-3.5" /> 쉬운 해설
-                </div>
-                <p className="text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">
-                  {buildSentimentExplain(data)}
-                </p>
-              </div>
+              (() => {
+                const ex = buildSentimentExplain(data);
+                return (
+                  <div className="w-full rounded-lg border border-violet-500/20 bg-violet-500/5 p-3">
+                    <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-violet-500">
+                      <GraduationCap className="h-3.5 w-3.5" /> 점수가 이렇게 나온 이유
+                    </div>
+                    <p className="text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">
+                      {ex.summary}
+                    </p>
+                    <ul className="mt-2 space-y-1.5">
+                      {ex.reasons.map((r) => (
+                        <li key={r.label} className="flex gap-2 text-[11px] leading-relaxed">
+                          <span
+                            className="mt-0.5 shrink-0 rounded px-1 py-0.5 text-[10px] font-semibold tabular-nums"
+                            style={{ color: scoreColor(r.value), backgroundColor: `${scoreColor(r.value)}1a` }}
+                          >
+                            {r.value.toFixed(0)}
+                          </span>
+                          <span className="text-zinc-600 dark:text-zinc-300">
+                            <b className="font-medium">{r.label}</b> — {r.text}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    {ex.biggest ? (
+                      <p className="mt-2 text-[11px] font-medium text-zinc-500">{ex.biggest}</p>
+                    ) : null}
+                    <p className="mt-1 text-[10px] text-zinc-400">
+                      ※ 군중심리 참고용이며 미래를 보장하지 않아요.
+                    </p>
+                  </div>
+                );
+              })()
             ) : null}
           </div>
         )}

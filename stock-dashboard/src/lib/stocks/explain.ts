@@ -6,7 +6,7 @@ import { ema, rsi } from "./indicators";
 // 초보자를 위한 "쉬운 해설" 생성기 (데이터 기반 휴리스틱, 네트워크 불필요)
 // 가격·거래량·추세·뉴스를 결과론적으로 연결해 평이한 한국어로 설명.
 
-export type ExplainIcon = "price" | "volume" | "trend" | "rsi" | "news" | "valuation" | "caution";
+export type ExplainIcon = "summary" | "price" | "volume" | "trend" | "rsi" | "news" | "valuation" | "caution";
 export type ExplainTone = "up" | "down" | "neutral";
 
 export interface ExplainItem {
@@ -31,8 +31,48 @@ export function explainStock({ quote, candles, news, fundamentals }: ExplainInpu
   const items: ExplainItem[] = [];
   const isKr = quote.market === "KR";
 
-  // 1) 가격 흐름
+  // --- 핵심 지표 미리 계산 ---
   const chg = quote.changePercent;
+  const e20m = ema(candles, 20).at(-1)?.value;
+  const e60m = ema(candles, 60).at(-1)?.value;
+  const aboveTrend = e20m != null && e60m != null ? quote.price >= e60m : null;
+  const rsiVal = rsi(candles, 14).at(-1)?.value;
+  const volsAll = candles.map((c) => c.volume).filter((v) => v > 0);
+  let volRatio: number | null = null;
+  if (volsAll.length >= 6) {
+    const recent = volsAll[volsAll.length - 1];
+    const base = volsAll.slice(-21, -1);
+    const avg = base.reduce((a, b) => a + b, 0) / (base.length || 1);
+    volRatio = avg > 0 ? recent / avg : null;
+  }
+
+  // 0) 핵심 한 줄 (가장 먼저, 결과를 압축)
+  const signals: string[] = [];
+  if (volRatio != null && volRatio >= 2) signals.push("거래량 급증");
+  else if (volRatio != null && volRatio <= 0.6) signals.push("거래 한산");
+  if (rsiVal != null && rsiVal >= 70) signals.push("단기 과열(RSI 높음)");
+  else if (rsiVal != null && rsiVal <= 30) signals.push("과매도(RSI 낮음)");
+  if (aboveTrend === true) signals.push("상승 추세");
+  else if (aboveTrend === false) signals.push("약세 추세");
+  const keyDir = chg > 0.1 ? "상승" : chg < -0.1 ? "하락" : "보합";
+  const keyTail =
+    volRatio != null && volRatio >= 2
+      ? "큰 이슈로 관심이 몰리는 모습이에요."
+      : rsiVal != null && rsiVal >= 70
+        ? "단기 과열 구간이라 조정 가능성도 함께 봐야 해요."
+        : rsiVal != null && rsiVal <= 30
+          ? "낙폭이 큰 구간이라 기술적 반등 여부를 지켜볼 만해요."
+          : aboveTrend === true
+            ? "전반적으로 흐름은 양호한 편이에요."
+            : "특별한 과열·급변 신호는 크지 않아요.";
+  items.push({
+    icon: "summary",
+    title: "한마디로",
+    text: `오늘 ${pctText(chg)} ${keyDir}${signals.length ? `, ${signals.slice(0, 2).join(" · ")}` : ""}. ${keyTail}`,
+    tone: chg > 0.1 ? "up" : chg < -0.1 ? "down" : "neutral",
+  });
+
+  // 1) 가격 흐름
   const dir = chg > 0.1 ? "올랐어요" : chg < -0.1 ? "내렸어요" : "거의 변동이 없어요";
   const tone: ExplainTone = chg > 0.1 ? "up" : chg < -0.1 ? "down" : "neutral";
   let priceText = `오늘은 전일 대비 ${pctText(chg)} ${dir}.`;
