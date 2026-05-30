@@ -58,8 +58,8 @@ export function AIAnalysisPanel({ ticker, market }: AIAnalysisPanelProps) {
         {!report ? (
           <div className="flex flex-col items-center gap-3 py-6 text-center">
             <p className="max-w-sm text-sm text-zinc-500">
-              버튼을 눌러 AI 분석 리포트를 생성하세요. ANTHROPIC_API_KEY가 설정되어 있지 않으면
-              지표 기반 자동 분석으로 대체됩니다.
+              버튼을 눌러 AI 분석 리포트를 생성하세요. 로컬 LLM(Ollama)이 실행 중이면 차트·재무·뉴스를
+              종합한 분석을, 아니면 지표 기반 자동 분석을 제공합니다.
             </p>
             <Button onClick={() => load(false)} variant="primary" disabled={loading}>
               <Sparkles className="h-4 w-4" /> {loading ? "생성 중..." : "분석 생성"}
@@ -74,8 +74,8 @@ export function AIAnalysisPanel({ ticker, market }: AIAnalysisPanelProps) {
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone={riskTone(report.riskLevel)}>리스크 {riskKr(report.riskLevel)}</Badge>
-              <Badge tone={report.source === "claude" ? "info" : "warning"}>
-                {report.source === "claude" ? "Claude 분석" : "예시 분석 (mock)"}
+              <Badge tone={report.source === "local" ? "info" : "warning"}>
+                {report.source === "local" ? "로컬 LLM 분석" : "지표 기반 자동 분석"}
               </Badge>
               {report.fromCache ? <Badge>캐시</Badge> : null}
               <span className="text-xs text-zinc-500">

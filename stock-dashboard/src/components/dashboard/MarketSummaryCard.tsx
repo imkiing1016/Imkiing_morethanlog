@@ -25,7 +25,7 @@ export async function MarketSummaryCard() {
               {s.sentiment}
             </Badge>
             <span className="text-[10px] font-normal text-zinc-500">
-              {s.source === "claude" ? "Claude 분석" : "자동 요약"}
+              {s.source === "local" ? "로컬 LLM" : "자동 요약"}
             </span>
           </span>
         </CardTitle>
@@ -54,7 +54,7 @@ export async function MarketSummaryCard() {
         ) : null}
         {s.source === "heuristic" ? (
           <p className="text-[10px] text-zinc-400">
-            ANTHROPIC_API_KEY 설정 시 Claude가 뉴스·지표를 종합한 3줄 요약을 생성합니다.
+            로컬 LLM(Ollama) 실행 시 뉴스·지표를 종합한 요약을 자동 생성합니다.
           </p>
         ) : null}
       </CardContent>

@@ -1,5 +1,6 @@
 import type { NewsItem } from "@/lib/stocks/news";
 import type { MarketIndex } from "@/lib/stocks/markets";
+import { localLlmChat } from "./local-llm";
 
 export interface MarketSummary {
   generatedAt: number;
@@ -7,13 +8,9 @@ export interface MarketSummary {
   bullets: string[]; // 2~4줄 요약
   themes: string[]; // 핵심 테마 태그
   sentiment: "긍정" | "중립" | "부정";
-  source: "claude" | "heuristic";
+  source: "local" | "heuristic";
 }
 
-// 시장 요약은 최신·최상위 모델 기본값. ANTHROPIC_MODEL로 override 가능.
-const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-opus-4-8";
-
-// 안정적인 시스템 프롬프트(매 요청 동일) → 프롬프트 캐싱 대상.
 const SYSTEM_PROMPT = `당신은 한국 개인 투자자를 위한 금융 시장 애널리스트입니다.
 주어진 지수/환율 데이터와 최근 뉴스 헤드라인만을 근거로 "오늘의 시장 요약"을 작성합니다.
 규칙:
@@ -55,22 +52,12 @@ interface BuildInput {
 }
 
 export async function buildMarketSummary({ news, indices }: BuildInput): Promise<MarketSummary> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return heuristicSummary(news, indices);
   try {
-    const { default: Anthropic } = await import("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey });
-    const message = await client.messages.create({
-      model: MODEL,
-      max_tokens: 1024,
-      // 안정적 시스템 프롬프트를 캐시 → 반복 호출 시 입력 비용 절감
-      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content: renderInput(news, indices) }],
+    // 로컬 LLM(Ollama 등)으로 종합 요약. 미실행/실패 시 휴리스틱 폴백.
+    const text = await localLlmChat(SYSTEM_PROMPT, renderInput(news, indices), {
+      json: true,
+      timeoutMs: 90_000,
     });
-    const text = message.content
-      .filter((c): c is Extract<typeof c, { type: "text" }> => c.type === "text")
-      .map((c) => c.text)
-      .join("");
     const parsed = parseJson(text);
     const sentiment =
       parsed.sentiment === "긍정" || parsed.sentiment === "부정" ? parsed.sentiment : "중립";
@@ -84,11 +71,11 @@ export async function buildMarketSummary({ news, indices }: BuildInput): Promise
         ? parsed.themes.slice(0, 6)
         : extractThemes(news),
       sentiment,
-      source: "claude",
+      source: "local",
     };
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn("[ai] market summary failed, using heuristic", err);
+      console.warn("[ai] market summary (local LLM) failed, using heuristic", err);
     }
     return heuristicSummary(news, indices);
   }
@@ -141,7 +128,7 @@ function heuristicBullets(news: NewsItem[], indices: MarketIndex[]): string[] {
   bullets.push(heuristicHeadline(indices));
   if (themes.length > 0) bullets.push(`주요 테마: ${themes.join(", ")} 관련 기사가 다수입니다.`);
   if (news[0]) bullets.push(`핵심 헤드라인: "${news[0].title.slice(0, 50)}"`);
-  bullets.push("개별 기사 본문과 지표를 함께 확인하세요. (ANTHROPIC_API_KEY 설정 시 Claude 종합 요약)");
+  bullets.push("개별 기사 본문과 지표를 함께 확인하세요. (로컬 LLM 실행 시 종합 요약)");
   return bullets.slice(0, 4);
 }
 

@@ -67,5 +67,5 @@ export interface AnalysisReport {
   outlook: string;
   riskLevel: "low" | "medium" | "high";
   fromCache: boolean;
-  source: "claude" | "mock";
+  source: "local" | "mock";
 }

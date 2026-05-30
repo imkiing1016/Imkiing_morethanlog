@@ -2,6 +2,7 @@ import type { AnalysisReport, Candle, Quote } from "@/types/stock";
 import { ema, rsi, macd } from "@/lib/stocks/indicators";
 import type { Fundamentals } from "@/lib/stocks/fundamentals";
 import type { NewsItem } from "@/lib/stocks/news";
+import { localLlmChat } from "./local-llm";
 
 interface AnalyzeInput {
   quote: Quote;
@@ -10,35 +11,24 @@ interface AnalyzeInput {
   news?: NewsItem[];
 }
 
-const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
+const SYSTEM_PROMPT =
+  "You are a careful equity research assistant. Synthesize technical indicators, fundamental metrics, AND recent news headlines together — do not rely on price/chart alone. Always respond in Korean using strict JSON matching the requested schema. Cite which factor (차트/재무/뉴스) drives each point. Do NOT provide direct buy/sell recommendations; describe scenarios and risks.";
 
 export async function buildAnalysis(input: AnalyzeInput): Promise<AnalysisReport> {
   const { quote, history, fundamentals, news } = input;
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return mockAnalysis(input);
-  }
   try {
-    const { default: Anthropic } = await import("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey });
+    // 로컬 LLM(Ollama 등)으로 종합 분석. 미실행/실패 시 지표 기반 mock 분석.
     const prompt = renderPrompt(
       quote,
       buildSeriesSummary(history),
       buildFundamentalsSummary(fundamentals),
       buildNewsSummary(news),
     );
-    const message = await client.messages.create({
-      model: MODEL,
-      max_tokens: 1500,
-      system:
-        "You are a careful equity research assistant. Synthesize technical indicators, fundamental metrics, AND recent news headlines together — do not rely on price/chart alone. Always respond in Korean using strict JSON matching the requested schema. Cite which factor (차트/재무/뉴스) drives each point. Do NOT provide direct buy/sell recommendations; describe scenarios and risks.",
-      messages: [{ role: "user", content: prompt }],
-    });
-    const text = message.content
-      .filter((c): c is Extract<typeof c, { type: "text" }> => c.type === "text")
-      .map((c) => c.text)
-      .join("");
+    const text = await localLlmChat(SYSTEM_PROMPT, prompt, { json: true, timeoutMs: 120_000 });
     const parsed = parseModelJson(text);
+    if (!parsed.summary && (!parsed.bullish || parsed.bullish.length === 0)) {
+      throw new Error("local LLM: empty analysis");
+    }
     return {
       ticker: quote.ticker,
       generatedAt: Date.now(),
@@ -48,10 +38,12 @@ export async function buildAnalysis(input: AnalyzeInput): Promise<AnalysisReport
       outlook: parsed.outlook ?? "",
       riskLevel: parsed.riskLevel ?? "medium",
       fromCache: false,
-      source: "claude",
+      source: "local",
     };
   } catch (err) {
-    console.warn("[ai] claude failed, falling back to mock", err);
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[ai] local LLM analysis failed, falling back to mock", err);
+    }
     return mockAnalysis(input);
   }
 }
@@ -210,7 +202,7 @@ function mockAnalysis({ quote, history, fundamentals, news }: AnalyzeInput): Ana
   return {
     ticker: quote.ticker,
     generatedAt: Date.now(),
-    summary: `${quote.name}은(는) 중기 추세선(EMA60) 대비 ${direction} 흐름이며 RSI 기준 ${momentum} 구간입니다. ${fundLine}최근 뉴스 ${newsCount}건을 종합하면, 현재가 ${quote.price}(당일 ${quote.changePercent.toFixed(2)}%)는 차트·재무·뉴스 신호가 혼재된 국면입니다. (예시 분석 - ANTHROPIC_API_KEY 설정 시 Claude 종합 분석)`,
+    summary: `${quote.name}은(는) 중기 추세선(EMA60) 대비 ${direction} 흐름이며 RSI 기준 ${momentum} 구간입니다. ${fundLine}최근 뉴스 ${newsCount}건을 종합하면, 현재가 ${quote.price}(당일 ${quote.changePercent.toFixed(2)}%)는 차트·재무·뉴스 신호가 혼재된 국면입니다. (지표 기반 자동 분석 - 로컬 LLM 실행 시 종합 분석)`,
     bullish: bullish.slice(0, 4),
     bearish: bearish.slice(0, 4),
     outlook: `[차트] 단기적으로 EMA20을 지지선으로 ${direction} 추세 연장 여부가 관건이며, RSI ${rsiLast.toFixed(1)} 구간에서는 ${momentum === "과매수" ? "이익 실현 매물" : momentum === "과매도" ? "기술적 반등" : "방향성 대기"}을 염두에 둡니다. [재무] ${fundamentals ? `PER ${num(fundamentals.peRatio)}·매출성장 ${pct(fundamentals.revenueGrowth)} 등 밸류에이션과 성장성을 함께 점검해야 합니다.` : "펀더멘털 데이터 보완이 필요합니다."} [뉴스] 최근 ${newsCount}건의 헤드라인이 실적/규제/제품 이벤트를 시사할 수 있어 본문 확인이 권장됩니다. 세 영역의 신호가 일치할 때 추세 신뢰도가 높아집니다.`,
