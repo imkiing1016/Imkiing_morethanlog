@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, GraduationCap } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { Market, MarketSentiment } from "@/types/stock";
@@ -16,6 +16,31 @@ function scoreColor(score: number): string {
   if (score >= 45) return "#facc15";
   if (score >= 30) return "#f97316";
   return "#ef4444";
+}
+
+// 초보자를 위한 시장 심리 쉬운 해설
+function buildSentimentExplain(data: MarketSentiment): string {
+  const s = data.score;
+  let base: string;
+  if (s >= 75)
+    base = `지금 시장 심리는 ${s.toFixed(0)}점으로 '매우 낙관(탐욕)' 상태예요. 투자자들이 적극적으로 사는 분위기지만, 과열되면 작은 악재에도 조정(하락)이 올 수 있어 욕심은 조심하는 게 좋아요.`;
+  else if (s >= 60)
+    base = `지금 시장 심리는 ${s.toFixed(0)}점으로 '낙관' 쪽이에요. 전반적으로 분위기가 좋은 편이라 매수세가 우위인 상태예요.`;
+  else if (s >= 45)
+    base = `지금 시장 심리는 ${s.toFixed(0)}점으로 '중립'이에요. 살지 팔지 눈치 보는 관망 분위기로, 방향이 정해지길 기다리는 구간일 때가 많아요.`;
+  else if (s >= 30)
+    base = `지금 시장 심리는 ${s.toFixed(0)}점으로 '신중·불안' 쪽이에요. 투자자들이 위험을 피하려는 분위기라 변동성이 커질 수 있어요.`;
+  else
+    base = `지금 시장 심리는 ${s.toFixed(0)}점으로 '공포' 상태예요. 다들 불안해하는 구간인데, 과도한 공포는 반대로 저가 매수 기회가 되기도 해요(역발상).`;
+
+  const sorted = [...data.components].sort((a, b) => b.value - a.value);
+  const best = sorted[0];
+  const worst = sorted[sorted.length - 1];
+  let detail = "";
+  if (best && worst && best.key !== worst.key) {
+    detail = ` 가장 긍정적인 요인은 '${best.label}', 가장 약한 요인은 '${worst.label}'이에요.`;
+  }
+  return base + detail + " (이 점수는 군중심리 참고용이며, 미래를 보장하지 않아요)";
 }
 
 export function SentimentGauge({ market }: SentimentGaugeProps) {
@@ -146,6 +171,16 @@ export function SentimentGauge({ market }: SentimentGaugeProps) {
                 </div>
               ))}
             </div>
+            {data ? (
+              <div className="w-full rounded-lg border border-violet-500/20 bg-violet-500/5 p-3">
+                <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-violet-500">
+                  <GraduationCap className="h-3.5 w-3.5" /> 쉬운 해설
+                </div>
+                <p className="text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">
+                  {buildSentimentExplain(data)}
+                </p>
+              </div>
+            ) : null}
           </div>
         )}
       </CardContent>

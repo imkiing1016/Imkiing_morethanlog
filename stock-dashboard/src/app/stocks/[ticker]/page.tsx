@@ -11,6 +11,7 @@ import { IndicatorPanel } from "@/components/detail/IndicatorPanel";
 import { AIAnalysisPanel } from "@/components/detail/AIAnalysisPanel";
 import { FundamentalsCard } from "@/components/detail/FundamentalsCard";
 import { SourceBadge } from "@/components/detail/SourceBadge";
+import { BeginnerExplainCard } from "@/components/detail/BeginnerExplainCard";
 import { NewsList } from "@/components/dashboard/NewsList";
 
 interface PageProps {
@@ -102,6 +103,10 @@ export default async function StockDetailPage({ params, searchParams }: PageProp
           <PriceChart candles={candles} isKr={isKr} />
         </CardContent>
       </Card>
+
+      <Suspense fallback={<div className="h-40 animate-pulse rounded-lg bg-zinc-100 dark:bg-zinc-900" />}>
+        <BeginnerExplainCard quote={quote} candles={candles} ticker={quote.ticker} market={quote.market} />
+      </Suspense>
 
       <IndicatorPanel candles={candles} />
 
