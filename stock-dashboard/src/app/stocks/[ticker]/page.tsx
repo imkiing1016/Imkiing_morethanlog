@@ -177,7 +177,7 @@ export default async function StockDetailPage({ params, searchParams }: PageProp
         <AIAnalysisPanel ticker={quote.ticker} market={quote.market} />
       </Collapsible>
 
-      <Collapsible title={`${displayName} 관련 뉴스`} subtitle="최근 기사">
+      <Collapsible title={`${displayName} 관련 뉴스`} subtitle="최근 기사" defaultOpen>
         <Suspense fallback={<div className="h-32 animate-pulse rounded-lg bg-zinc-100 dark:bg-zinc-900" />}>
           <NewsList ticker={quote.ticker} title={`${displayName} 관련 뉴스`} limit={8} />
         </Suspense>
