@@ -15,6 +15,7 @@ import { BeginnerExplainCard } from "@/components/detail/BeginnerExplainCard";
 import { VerdictCard } from "@/components/detail/VerdictCard";
 import { AnalystReports } from "@/components/detail/AnalystReports";
 import { SupplyTrendCard } from "@/components/detail/SupplyTrendCard";
+import { BacktestCard } from "@/components/detail/BacktestCard";
 import { NewsList } from "@/components/dashboard/NewsList";
 import { Collapsible } from "@/components/ui/collapsible";
 
@@ -184,6 +185,10 @@ export default async function StockDetailPage({ params, searchParams }: PageProp
 
       <Collapsible title="AI 분석 리포트" subtitle="차트·재무·뉴스 종합 (로컬 LLM)" defaultOpen>
         <AIAnalysisPanel ticker={quote.ticker} market={quote.market} />
+      </Collapsible>
+
+      <Collapsible title="신호 정확도 백테스트" subtitle="과거 데이터로 매수/매도 신호 검증">
+        <BacktestCard ticker={quote.ticker} market={quote.market} />
       </Collapsible>
 
       <Collapsible title={`${displayName} 관련 뉴스`} subtitle="최근 기사" defaultOpen>
