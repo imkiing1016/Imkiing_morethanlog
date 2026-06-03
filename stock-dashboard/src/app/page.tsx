@@ -38,7 +38,7 @@ export default function HomePage() {
       <WatchlistGrid />
 
       <Suspense fallback={<SectionFallback title="시장 뉴스" />}>
-        <NewsList limit={8} />
+        <NewsList limit={8} aiSummary summaryLabel="국내 증시" />
       </Suspense>
     </div>
   );
