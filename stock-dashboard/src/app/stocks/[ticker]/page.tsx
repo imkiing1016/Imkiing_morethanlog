@@ -14,6 +14,7 @@ import { SourceBadge } from "@/components/detail/SourceBadge";
 import { BeginnerExplainCard } from "@/components/detail/BeginnerExplainCard";
 import { VerdictCard } from "@/components/detail/VerdictCard";
 import { AnalystReports } from "@/components/detail/AnalystReports";
+import { SupplyTrendCard } from "@/components/detail/SupplyTrendCard";
 import { NewsList } from "@/components/dashboard/NewsList";
 import { Collapsible } from "@/components/ui/collapsible";
 
@@ -166,6 +167,14 @@ export default async function StockDetailPage({ params, searchParams }: PageProp
           <FundamentalsCard ticker={quote.ticker} market={quote.market} />
         </Suspense>
       </Collapsible>
+
+      {isKr ? (
+        <Collapsible title="투자자별 매매동향" subtitle="외국인·기관·개인 순매수 (국내)" defaultOpen>
+          <Suspense fallback={<div className="h-32 animate-pulse rounded-lg bg-zinc-100 dark:bg-zinc-900" />}>
+            <SupplyTrendCard ticker={quote.ticker} market={quote.market} />
+          </Suspense>
+        </Collapsible>
+      ) : null}
 
       <Collapsible title="애널리스트 리포트" subtitle="증권사 목표주가·리포트 (국내)" defaultOpen>
         <Suspense fallback={<div className="h-32 animate-pulse rounded-lg bg-zinc-100 dark:bg-zinc-900" />}>

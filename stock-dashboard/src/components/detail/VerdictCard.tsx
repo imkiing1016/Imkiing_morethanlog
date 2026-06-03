@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getFundamentals } from "@/lib/stocks/fundamentals";
 import { getStockNews } from "@/lib/stocks/news";
 import { getMarketSentiment } from "@/lib/stocks/sentiment";
+import { getKrIntegration } from "@/lib/stocks/kr-integration";
 import { computeVerdict, type Lean, type Recommendation } from "@/lib/analysis/engine";
 import { formatCurrency } from "@/lib/format";
 import type { Candle, Market, Quote } from "@/types/stock";
@@ -30,10 +31,11 @@ const REC_STYLE: Record<Recommendation, { bg: string; text: string; icon: string
 };
 
 export async function VerdictCard({ quote, candles, ticker, market }: VerdictCardProps) {
-  const [fundamentals, news, sentiment] = await Promise.all([
+  const [fundamentals, news, sentiment, kr] = await Promise.all([
     getFundamentals(ticker).catch(() => undefined),
     getStockNews(ticker, 6).catch(() => []),
     getMarketSentiment(market).catch(() => null),
+    market === "KR" ? getKrIntegration(ticker).catch(() => null) : Promise.resolve(null),
   ]);
 
   const v = computeVerdict({
@@ -42,7 +44,14 @@ export async function VerdictCard({ quote, candles, ticker, market }: VerdictCar
     fundamentals,
     news,
     marketScore: sentiment?.score,
+    supply: kr?.supply,
+    consensus: kr?.consensus,
   });
+  const consensus = kr?.consensus;
+  const upside =
+    consensus?.priceTargetMean && quote.price > 0
+      ? ((consensus.priceTargetMean - quote.price) / quote.price) * 100
+      : null;
   const rec = REC_STYLE[v.recommendation];
   const confKr = v.confidence === "high" ? "높음" : v.confidence === "medium" ? "보통" : "낮음";
 
@@ -94,6 +103,27 @@ export async function VerdictCard({ quote, candles, ticker, market }: VerdictCar
             </div>
           ))}
         </div>
+
+        {/* 애널리스트 컨센서스 목표가 */}
+        {consensus?.priceTargetMean ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2 text-xs">
+            <span className="font-semibold text-violet-500">컨센서스 목표가</span>
+            <span className="tabular-nums font-bold">
+              {formatCurrency(consensus.priceTargetMean, market)}
+            </span>
+            {upside != null ? (
+              <span
+                className={`tabular-nums font-medium ${upside >= 0 ? "text-emerald-500" : "text-rose-500"}`}
+              >
+                현재가 대비 {upside >= 0 ? "+" : ""}
+                {upside.toFixed(1)}%
+              </span>
+            ) : null}
+            {consensus.recommMean != null ? (
+              <span className="text-zinc-500">· 투자의견 {consensus.recommMean.toFixed(2)}/5</span>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* 참고 지지/저항 */}
         {v.levels.support != null && v.levels.resistance != null ? (

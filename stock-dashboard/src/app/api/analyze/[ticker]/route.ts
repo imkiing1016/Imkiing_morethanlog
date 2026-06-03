@@ -3,6 +3,7 @@ import { getHistory, getQuote } from "@/lib/stocks/provider";
 import { getFundamentals } from "@/lib/stocks/fundamentals";
 import { getStockNews } from "@/lib/stocks/news";
 import { getMarketSentiment } from "@/lib/stocks/sentiment";
+import { getKrIntegration } from "@/lib/stocks/kr-integration";
 import { buildAnalysis } from "@/lib/ai/analyze";
 import type { AnalysisReport } from "@/types/stock";
 
@@ -28,13 +29,18 @@ export async function GET(
     getFundamentals(decoded).catch(() => undefined),
     getStockNews(decoded, 8).catch(() => []),
   ]);
-  const sentiment = await getMarketSentiment(quote.market).catch(() => null);
+  const [sentiment, kr] = await Promise.all([
+    getMarketSentiment(quote.market).catch(() => null),
+    quote.market === "KR" ? getKrIntegration(decoded).catch(() => null) : Promise.resolve(null),
+  ]);
   const report = await buildAnalysis({
     quote,
     history,
     fundamentals,
     news,
     marketScore: sentiment?.score,
+    supply: kr?.supply,
+    consensus: kr?.consensus,
   });
   CACHE.set(decoded, { value: report, expires: Date.now() + TTL_MS });
   return NextResponse.json(report);

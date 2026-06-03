@@ -1,5 +1,6 @@
 import { normalizeInput } from "./normalize";
 import { resolveReutersCode } from "./naver-world";
+import { getKrIntegration } from "./kr-integration";
 import type { Market } from "@/types/stock";
 
 // 펀더멘털(재무) - 네이버 금융 basic 응답의 stockItemTotalInfos에서 추출.
@@ -95,17 +96,46 @@ export async function getFundamentals(input: string): Promise<Fundamentals> {
   if (process.env.STOCK_DATA_MODE === "mock") {
     return mockFundamentals(ticker, symbol, market);
   }
-  try {
-    // 시세 basic 엔드포인트 (국내 vs 해외) — stockItemTotalInfos에 재무지표 포함
-    let url: string;
-    if (market === "KR") {
-      const code = symbol.replace(/\.(KS|KQ)$/i, "");
-      url = `https://m.stock.naver.com/api/stock/${encodeURIComponent(code)}/basic`;
-    } else {
-      const resolved = await resolveReutersCode(ticker);
-      if (!resolved) throw new Error(`fundamentals: cannot resolve ${ticker}`);
-      url = `https://api.stock.naver.com/stock/${encodeURIComponent(resolved.code)}/basic`;
+
+  // 국내 종목: integration 엔드포인트(PER/PBR/EPS/BPS/배당/시총 실데이터)
+  if (market === "KR") {
+    try {
+      const kr = await getKrIntegration(input);
+      const f = kr?.fundamentals;
+      if (f && (f.per != null || f.pbr != null)) {
+        return {
+          ticker,
+          symbol,
+          market,
+          peRatio: f.per,
+          forwardPe: f.forwardPer,
+          pbRatio: f.pbr,
+          eps: f.eps,
+          forwardEps: f.forwardEps,
+          bps: f.bps,
+          dividendYield: f.dividendYield,
+          dividendRate: f.dividendRate,
+          fiftyTwoWeekHigh: f.fiftyTwoWeekHigh,
+          fiftyTwoWeekLow: f.fiftyTwoWeekLow,
+          marketCap: f.marketCap,
+          source: "naver",
+          updatedAt: Date.now(),
+        };
+      }
+      throw new Error("KR integration: no fundamentals");
+    } catch (err) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`[naver] KR fundamentals ${symbol} failed, using mock`, err);
+      }
+      return mockFundamentals(ticker, symbol, market);
     }
+  }
+
+  try {
+    // 해외 종목: world basic 엔드포인트 — stockItemTotalInfos에 재무지표 포함
+    const resolved = await resolveReutersCode(ticker);
+    if (!resolved) throw new Error(`fundamentals: cannot resolve ${ticker}`);
+    const url = `https://api.stock.naver.com/stock/${encodeURIComponent(resolved.code)}/basic`;
     const res = await fetch(url, { headers: NAVER_HEADERS, next: { revalidate: 1800 } });
     if (!res.ok) throw new Error(`Naver fundamentals ${res.status}`);
     const json = (await res.json()) as NaverBasic;

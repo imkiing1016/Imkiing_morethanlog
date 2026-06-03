@@ -3,6 +3,7 @@ import { ema, rsi, macd } from "@/lib/stocks/indicators";
 import type { Fundamentals } from "@/lib/stocks/fundamentals";
 import type { NewsItem } from "@/lib/stocks/news";
 import { computeVerdict, verdictToText, type Recommendation } from "@/lib/analysis/engine";
+import type { SupplyDay, KrConsensus } from "@/lib/stocks/kr-integration";
 import { localLlmChat } from "./local-llm";
 
 interface AnalyzeInput {
@@ -12,6 +13,8 @@ interface AnalyzeInput {
   news?: NewsItem[];
   /** 시장 분위기(시장 심리 점수 0~100) */
   marketScore?: number;
+  supply?: SupplyDay[];
+  consensus?: KrConsensus;
 }
 
 function mapVerdictRec(r: Recommendation): "buy" | "hold" | "sell" {
@@ -24,8 +27,16 @@ const SYSTEM_PROMPT =
   "You are a careful equity research assistant. Synthesize technical indicators, fundamental metrics, AND recent news headlines together — do not rely on price/chart alone. Always respond in Korean using strict JSON matching the requested schema. Cite which factor (차트/재무/뉴스) drives each point. Do NOT provide direct buy/sell recommendations; describe scenarios and risks.";
 
 export async function buildAnalysis(input: AnalyzeInput): Promise<AnalysisReport> {
-  const { quote, history, fundamentals, news, marketScore } = input;
-  const verdict = computeVerdict({ quote, candles: history, fundamentals, news, marketScore });
+  const { quote, history, fundamentals, news, marketScore, supply, consensus } = input;
+  const verdict = computeVerdict({
+    quote,
+    candles: history,
+    fundamentals,
+    news,
+    marketScore,
+    supply,
+    consensus,
+  });
   try {
     // 로컬 LLM(Ollama 등)으로 종합 분석. 미실행/실패 시 지표 기반 mock 분석.
     const prompt = renderPrompt(
@@ -176,7 +187,7 @@ function parseModelJson(text: string): Partial<AnalysisReport> {
 }
 
 
-function mockAnalysis({ quote, history, fundamentals, news, marketScore }: AnalyzeInput): AnalysisReport {
+function mockAnalysis({ quote, history, fundamentals, news, marketScore, supply, consensus }: AnalyzeInput): AnalysisReport {
   const e20 = ema(history, 20).at(-1)?.value ?? quote.price;
   const e60 = ema(history, 60).at(-1)?.value ?? quote.price;
   const rsiLast = rsi(history, 14).at(-1)?.value ?? 50;
@@ -233,7 +244,8 @@ function mockAnalysis({ quote, history, fundamentals, news, marketScore }: Analy
     outlook: `[차트] 단기적으로 EMA20을 지지선으로 ${direction} 추세 연장 여부가 관건이며, RSI ${rsiLast.toFixed(1)} 구간에서는 ${momentum === "과매수" ? "이익 실현 매물" : momentum === "과매도" ? "기술적 반등" : "방향성 대기"}을 염두에 둡니다. [재무] ${fundamentals ? `PER ${num(fundamentals.peRatio)}·매출성장 ${pct(fundamentals.revenueGrowth)} 등 밸류에이션과 성장성을 함께 점검해야 합니다.` : "펀더멘털 데이터 보완이 필요합니다."} [뉴스] 최근 ${newsCount}건의 헤드라인이 실적/규제/제품 이벤트를 시사할 수 있어 본문 확인이 권장됩니다. 세 영역의 신호가 일치할 때 추세 신뢰도가 높아집니다.`,
     riskLevel: risk,
     recommendation: mapVerdictRec(
-      computeVerdict({ quote, candles: history, fundamentals, news, marketScore }).recommendation,
+      computeVerdict({ quote, candles: history, fundamentals, news, marketScore, supply, consensus })
+        .recommendation,
     ),
     fromCache: false,
     source: "mock",

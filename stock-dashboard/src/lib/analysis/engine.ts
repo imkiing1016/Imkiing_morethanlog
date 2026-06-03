@@ -1,6 +1,7 @@
 import type { Candle, Quote } from "@/types/stock";
 import type { Fundamentals } from "@/lib/stocks/fundamentals";
 import type { NewsItem } from "@/lib/stocks/news";
+import type { SupplyDay, KrConsensus } from "@/lib/stocks/kr-integration";
 import {
   ema,
   rsi,
@@ -45,13 +46,17 @@ interface EngineInput {
   news?: NewsItem[];
   /** 해당 시장 심리 점수 0~100 (시장 분위기) */
   marketScore?: number;
+  /** 투자자별 매매동향 (국내) */
+  supply?: SupplyDay[];
+  /** 애널리스트 컨센서스 (국내) */
+  consensus?: KrConsensus;
 }
 
 const clamp = (v: number, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
 const leanOf = (score: number): Lean => (score >= 58 ? "good" : score <= 42 ? "bad" : "neutral");
 
 export function computeVerdict(input: EngineInput): AnalysisVerdict {
-  const { quote, candles, fundamentals, news, marketScore } = input;
+  const { quote, candles, fundamentals, news, marketScore, supply, consensus } = input;
   const price = quote.price;
   const axes: AxisResult[] = [];
 
@@ -203,6 +208,18 @@ export function computeVerdict(input: EngineInput): AnalysisVerdict {
         parts.push("OBV 하락(분산)");
       }
     }
+    // 외국인+기관(스마트머니) 최근 5일 순매수
+    if (supply && supply.length > 0) {
+      const recent = supply.slice(0, 5);
+      const smartNet = recent.reduce((a, d) => a + d.foreigner + d.organ, 0);
+      if (smartNet > 0) {
+        s += 14;
+        parts.push("외국인·기관 순매수");
+      } else if (smartNet < 0) {
+        s -= 14;
+        parts.push("외국인·기관 순매도");
+      }
+    }
     axes.push({
       key: "volume",
       label: "거래량/수급",
@@ -213,10 +230,10 @@ export function computeVerdict(input: EngineInput): AnalysisVerdict {
     });
   }
 
-  // ── ⑤ 밸류에이션 (PER/PBR — 실데이터만) ──
+  // ── ⑤ 밸류에이션 (PER/PBR + 컨센서스 목표가) ──
   {
     let s = 50;
-    let detail = "PER/PBR 데이터 없음";
+    const parts: string[] = [];
     let valid = false;
     if (fundamentals && fundamentals.source !== "mock") {
       const per = fundamentals.peRatio;
@@ -224,17 +241,26 @@ export function computeVerdict(input: EngineInput): AnalysisVerdict {
       if (per != null || pbr != null) {
         valid = true;
         if (per != null) {
-          if (per > 0 && per < 10) s += 20;
+          if (per > 0 && per < 10) s += 18;
           else if (per < 20) s += 5;
           else if (per <= 35) s -= 5;
-          else s -= 20;
+          else s -= 18;
         }
         if (pbr != null) {
-          if (pbr < 1) s += 10;
-          else if (pbr > 5) s -= 10;
+          if (pbr < 1) s += 8;
+          else if (pbr > 5) s -= 8;
         }
-        detail = `PER ${per?.toFixed(1) ?? "—"} · PBR ${pbr?.toFixed(1) ?? "—"}`;
+        parts.push(`PER ${per?.toFixed(1) ?? "—"} · PBR ${pbr?.toFixed(1) ?? "—"}`);
       }
+    }
+    // 애널리스트 컨센서스 목표가 대비 상승여력
+    if (consensus?.priceTargetMean && price > 0) {
+      valid = true;
+      const upside = ((consensus.priceTargetMean - price) / price) * 100;
+      if (upside > 15) s += 14;
+      else if (upside > 0) s += 6;
+      else if (upside < -5) s -= 14;
+      parts.push(`목표가 대비 ${upside >= 0 ? "+" : ""}${upside.toFixed(0)}%`);
     }
     axes.push({
       key: "valuation",
@@ -242,7 +268,7 @@ export function computeVerdict(input: EngineInput): AnalysisVerdict {
       score: clamp(s),
       weight: valid ? 16 : 0, // 데이터 없으면 가중치 0 (종합서 제외)
       lean: valid ? leanOf(clamp(s)) : "neutral",
-      detail,
+      detail: parts.join(" · ") || "PER/PBR·목표가 데이터 없음",
     });
   }
 
