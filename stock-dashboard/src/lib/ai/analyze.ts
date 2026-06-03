@@ -37,6 +37,7 @@ export async function buildAnalysis(input: AnalyzeInput): Promise<AnalysisReport
       bearish: parsed.bearish ?? [],
       outlook: parsed.outlook ?? "",
       riskLevel: parsed.riskLevel ?? "medium",
+      recommendation: parsed.recommendation ?? deriveRecommendation(parsed),
       fromCache: false,
       source: "local",
     };
@@ -117,7 +118,8 @@ Schema:
   "bullish": ["[차트/재무/뉴스] 근거 불릿 3~4개"],
   "bearish": ["[차트/재무/뉴스] 근거 불릿 3~4개"],
   "outlook": "단기/중기 시나리오 (4~6문장, 세 영역을 모두 언급)",
-  "riskLevel": "low" | "medium" | "high"
+  "riskLevel": "low" | "medium" | "high",
+  "recommendation": "buy" | "hold" | "sell"  // 참고용 신호: bullish > bearish이고 추세·재무 모두 우호적이면 buy, 명백히 약세·고평가·악재 우위면 sell, 그 외는 hold
 }
 
 == 종목 정보 ==
@@ -149,6 +151,16 @@ function parseModelJson(text: string): Partial<AnalysisReport> {
   } catch {
     return {};
   }
+}
+
+/** 강세/약세 포인트 개수로 매수/관망/매도 관점 도출 (모델이 누락 시 폴백) */
+function deriveRecommendation(p: Partial<AnalysisReport>): "buy" | "hold" | "sell" {
+  const bull = p.bullish?.length ?? 0;
+  const bear = p.bearish?.length ?? 0;
+  const diff = bull - bear;
+  if (diff >= 2) return "buy";
+  if (diff <= -2) return "sell";
+  return "hold";
 }
 
 function mockAnalysis({ quote, history, fundamentals, news }: AnalyzeInput): AnalysisReport {
@@ -207,6 +219,7 @@ function mockAnalysis({ quote, history, fundamentals, news }: AnalyzeInput): Ana
     bearish: bearish.slice(0, 4),
     outlook: `[차트] 단기적으로 EMA20을 지지선으로 ${direction} 추세 연장 여부가 관건이며, RSI ${rsiLast.toFixed(1)} 구간에서는 ${momentum === "과매수" ? "이익 실현 매물" : momentum === "과매도" ? "기술적 반등" : "방향성 대기"}을 염두에 둡니다. [재무] ${fundamentals ? `PER ${num(fundamentals.peRatio)}·매출성장 ${pct(fundamentals.revenueGrowth)} 등 밸류에이션과 성장성을 함께 점검해야 합니다.` : "펀더멘털 데이터 보완이 필요합니다."} [뉴스] 최근 ${newsCount}건의 헤드라인이 실적/규제/제품 이벤트를 시사할 수 있어 본문 확인이 권장됩니다. 세 영역의 신호가 일치할 때 추세 신뢰도가 높아집니다.`,
     riskLevel: risk,
+    recommendation: deriveRecommendation({ bullish, bearish }),
     fromCache: false,
     source: "mock",
   };

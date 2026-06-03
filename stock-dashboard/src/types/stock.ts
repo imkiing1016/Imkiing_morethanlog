@@ -66,6 +66,8 @@ export interface AnalysisReport {
   bearish: string[];
   outlook: string;
   riskLevel: "low" | "medium" | "high";
+  /** 매수 관점 / 관망(중립) / 매도 관점 — 참고용 신호 (직접 권유 아님) */
+  recommendation: "buy" | "hold" | "sell";
   fromCache: boolean;
   source: "local" | "mock";
 }

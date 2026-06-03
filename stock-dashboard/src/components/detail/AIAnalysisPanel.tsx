@@ -82,6 +82,30 @@ export function AIAnalysisPanel({ ticker, market }: AIAnalysisPanelProps) {
                 {new Date(report.generatedAt).toLocaleString()}
               </span>
             </div>
+
+            {/* AI 종합 추천: 매수 관점 / 관망 / 매도 관점 */}
+            <div
+              className={`flex items-start gap-3 rounded-lg border p-3 ${recTone(report.recommendation).bg}`}
+            >
+              <div
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg font-bold ${recTone(report.recommendation).icon}`}
+              >
+                {recIcon(report.recommendation)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className={`text-sm font-semibold ${recTone(report.recommendation).text}`}>
+                  AI 추천: {recKr(report.recommendation)}
+                </div>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-zinc-600 dark:text-zinc-300">
+                  {recReason(report)}
+                </p>
+                <p className="mt-1 text-[10px] text-zinc-400">
+                  ⚠ "매수/매도 관점"은 강세·약세 신호의 가중치를 비교한 <b>참고용 신호</b>로,
+                  실제 매수·매도를 권유하지 않아요. 투자 판단·책임은 본인에게 있습니다.
+                </p>
+              </div>
+            </div>
+
             <p className="text-sm leading-relaxed">{report.summary}</p>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
@@ -135,4 +159,42 @@ function riskTone(risk: AnalysisReport["riskLevel"]) {
 
 function riskKr(risk: AnalysisReport["riskLevel"]) {
   return risk === "high" ? "높음" : risk === "medium" ? "보통" : "낮음";
+}
+
+function recKr(rec: AnalysisReport["recommendation"]) {
+  return rec === "buy" ? "매수 관점" : rec === "sell" ? "매도 관점" : "관망 (중립)";
+}
+
+function recIcon(rec: AnalysisReport["recommendation"]) {
+  return rec === "buy" ? "▲" : rec === "sell" ? "▼" : "■";
+}
+
+function recTone(rec: AnalysisReport["recommendation"]) {
+  if (rec === "buy")
+    return {
+      bg: "border-emerald-500/30 bg-emerald-500/5",
+      icon: "bg-emerald-500 text-white",
+      text: "text-emerald-600 dark:text-emerald-400",
+    };
+  if (rec === "sell")
+    return {
+      bg: "border-rose-500/30 bg-rose-500/5",
+      icon: "bg-rose-500 text-white",
+      text: "text-rose-600 dark:text-rose-400",
+    };
+  return {
+    bg: "border-zinc-300 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900/40",
+    icon: "bg-zinc-400 text-white",
+    text: "text-zinc-700 dark:text-zinc-200",
+  };
+}
+
+function recReason(r: AnalysisReport) {
+  const b = r.bullish.length;
+  const s = r.bearish.length;
+  if (r.recommendation === "buy")
+    return `강세 포인트(${b}) > 약세 포인트(${s}). 차트·재무·뉴스 신호가 대체로 우호적이라 매수 관점이 우세한 국면이에요.`;
+  if (r.recommendation === "sell")
+    return `약세 포인트(${s}) > 강세 포인트(${b}). 차트·재무·뉴스 신호가 대체로 부담스러워 매도 관점이 우세한 국면이에요.`;
+  return `강세(${b})·약세(${s}) 신호가 비슷하게 엇갈려 관망(중립) 구간으로 보여요.`;
 }
