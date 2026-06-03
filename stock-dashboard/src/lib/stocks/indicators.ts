@@ -121,3 +121,109 @@ export function trendLabel(value: number): "up" | "down" | "flat" {
   if (value < -0.5) return "down";
   return "flat";
 }
+
+// ----- 고급 지표 (전문 분석용) -----
+
+export interface BollingerPoint {
+  time: number;
+  middle: number;
+  upper: number;
+  lower: number;
+  /** %B: 밴드 내 위치 (0=하단, 1=상단) */
+  percentB: number;
+  /** 밴드폭 비율 (변동성) */
+  bandwidth: number;
+}
+
+export function bollinger(candles: Candle[], period = 20, mult = 2): BollingerPoint[] {
+  const out: BollingerPoint[] = [];
+  if (candles.length < period) return out;
+  for (let i = period - 1; i < candles.length; i++) {
+    const slice = candles.slice(i - period + 1, i + 1);
+    const mean = slice.reduce((s, c) => s + c.close, 0) / period;
+    const variance = slice.reduce((s, c) => s + (c.close - mean) ** 2, 0) / period;
+    const sd = Math.sqrt(variance);
+    const upper = mean + mult * sd;
+    const lower = mean - mult * sd;
+    const close = candles[i].close;
+    const percentB = upper === lower ? 0.5 : (close - lower) / (upper - lower);
+    out.push({
+      time: candles[i].time,
+      middle: mean,
+      upper,
+      lower,
+      percentB,
+      bandwidth: mean ? ((upper - lower) / mean) * 100 : 0,
+    });
+  }
+  return out;
+}
+
+/** ATR (변동성) - 가격 대비 비율(%)도 함께 */
+export function atr(candles: Candle[], period = 14): IndicatorPoint[] {
+  const out: IndicatorPoint[] = [];
+  if (candles.length <= period) return out;
+  const trs: number[] = [];
+  for (let i = 1; i < candles.length; i++) {
+    const h = candles[i].high;
+    const l = candles[i].low;
+    const pc = candles[i - 1].close;
+    trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+  }
+  let prev = trs.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  out.push({ time: candles[period].time, value: prev });
+  for (let i = period; i < trs.length; i++) {
+    prev = (prev * (period - 1) + trs[i]) / period;
+    out.push({ time: candles[i + 1].time, value: prev });
+  }
+  return out;
+}
+
+export interface StochPoint {
+  time: number;
+  k: number;
+  d: number;
+}
+
+export function stochastic(candles: Candle[], kPeriod = 14, dPeriod = 3): StochPoint[] {
+  if (candles.length < kPeriod) return [];
+  const kRaw: { time: number; k: number }[] = [];
+  for (let i = kPeriod - 1; i < candles.length; i++) {
+    const slice = candles.slice(i - kPeriod + 1, i + 1);
+    const hh = Math.max(...slice.map((c) => c.high));
+    const ll = Math.min(...slice.map((c) => c.low));
+    const k = hh === ll ? 50 : ((candles[i].close - ll) / (hh - ll)) * 100;
+    kRaw.push({ time: candles[i].time, k });
+  }
+  const out: StochPoint[] = [];
+  for (let i = dPeriod - 1; i < kRaw.length; i++) {
+    const d = kRaw.slice(i - dPeriod + 1, i + 1).reduce((s, p) => s + p.k, 0) / dPeriod;
+    out.push({ time: kRaw[i].time, k: kRaw[i].k, d });
+  }
+  return out;
+}
+
+/** OBV (누적 거래량 - 매집/분산 추세) */
+export function obv(candles: Candle[]): IndicatorPoint[] {
+  const out: IndicatorPoint[] = [];
+  if (candles.length === 0) return out;
+  let acc = 0;
+  out.push({ time: candles[0].time, value: 0 });
+  for (let i = 1; i < candles.length; i++) {
+    if (candles[i].close > candles[i - 1].close) acc += candles[i].volume;
+    else if (candles[i].close < candles[i - 1].close) acc -= candles[i].volume;
+    out.push({ time: candles[i].time, value: acc });
+  }
+  return out;
+}
+
+/** 최근 N봉의 단순 지지/저항 (스윙 고저) */
+export function supportResistance(candles: Candle[], lookback = 60): { support: number; resistance: number } | null {
+  if (candles.length < 5) return null;
+  const slice = candles.slice(-lookback);
+  return {
+    support: Math.min(...slice.map((c) => c.low)),
+    resistance: Math.max(...slice.map((c) => c.high)),
+  };
+}
+

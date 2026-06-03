@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getHistory, getQuote } from "@/lib/stocks/provider";
 import { getFundamentals } from "@/lib/stocks/fundamentals";
 import { getStockNews } from "@/lib/stocks/news";
+import { getMarketSentiment } from "@/lib/stocks/sentiment";
 import { buildAnalysis } from "@/lib/ai/analyze";
 import type { AnalysisReport } from "@/types/stock";
 
@@ -27,7 +28,14 @@ export async function GET(
     getFundamentals(decoded).catch(() => undefined),
     getStockNews(decoded, 8).catch(() => []),
   ]);
-  const report = await buildAnalysis({ quote, history, fundamentals, news });
+  const sentiment = await getMarketSentiment(quote.market).catch(() => null);
+  const report = await buildAnalysis({
+    quote,
+    history,
+    fundamentals,
+    news,
+    marketScore: sentiment?.score,
+  });
   CACHE.set(decoded, { value: report, expires: Date.now() + TTL_MS });
   return NextResponse.json(report);
 }

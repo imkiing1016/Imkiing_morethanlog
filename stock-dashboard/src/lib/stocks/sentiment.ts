@@ -52,7 +52,18 @@ async function indexTrend(symbol: string): Promise<{ trend: number; momentum: nu
   }
 }
 
+const sentimentCache = new Map<Market, { value: MarketSentiment; expires: number }>();
+const SENTIMENT_TTL = 3 * 60_000;
+
 export async function getMarketSentiment(market: Market): Promise<MarketSentiment> {
+  const cached = sentimentCache.get(market);
+  if (cached && cached.expires > Date.now()) return cached.value;
+  const value = await computeMarketSentiment(market);
+  sentimentCache.set(market, { value, expires: Date.now() + SENTIMENT_TTL });
+  return value;
+}
+
+async function computeMarketSentiment(market: Market): Promise<MarketSentiment> {
   const symbols = market === "KR" ? KR_INDICES : US_INDICES;
   const [changes, trendData, vixQuote] = await Promise.all([
     Promise.all(symbols.map(indexChange)),

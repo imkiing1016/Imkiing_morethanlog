@@ -2,6 +2,7 @@ import type { AnalysisReport, Candle, Quote } from "@/types/stock";
 import { ema, rsi, macd } from "@/lib/stocks/indicators";
 import type { Fundamentals } from "@/lib/stocks/fundamentals";
 import type { NewsItem } from "@/lib/stocks/news";
+import { computeVerdict, verdictToText, type Recommendation } from "@/lib/analysis/engine";
 import { localLlmChat } from "./local-llm";
 
 interface AnalyzeInput {
@@ -9,13 +10,22 @@ interface AnalyzeInput {
   history: Candle[];
   fundamentals?: Fundamentals;
   news?: NewsItem[];
+  /** 시장 분위기(시장 심리 점수 0~100) */
+  marketScore?: number;
+}
+
+function mapVerdictRec(r: Recommendation): "buy" | "hold" | "sell" {
+  if (r === "strong_buy" || r === "buy") return "buy";
+  if (r === "reduce" || r === "sell") return "sell";
+  return "hold";
 }
 
 const SYSTEM_PROMPT =
   "You are a careful equity research assistant. Synthesize technical indicators, fundamental metrics, AND recent news headlines together — do not rely on price/chart alone. Always respond in Korean using strict JSON matching the requested schema. Cite which factor (차트/재무/뉴스) drives each point. Do NOT provide direct buy/sell recommendations; describe scenarios and risks.";
 
 export async function buildAnalysis(input: AnalyzeInput): Promise<AnalysisReport> {
-  const { quote, history, fundamentals, news } = input;
+  const { quote, history, fundamentals, news, marketScore } = input;
+  const verdict = computeVerdict({ quote, candles: history, fundamentals, news, marketScore });
   try {
     // 로컬 LLM(Ollama 등)으로 종합 분석. 미실행/실패 시 지표 기반 mock 분석.
     const prompt = renderPrompt(
@@ -23,6 +33,7 @@ export async function buildAnalysis(input: AnalyzeInput): Promise<AnalysisReport
       buildSeriesSummary(history),
       buildFundamentalsSummary(fundamentals),
       buildNewsSummary(news),
+      verdictToText(verdict),
     );
     const text = await localLlmChat(SYSTEM_PROMPT, prompt, { json: true, timeoutMs: 120_000 });
     const parsed = parseModelJson(text);
@@ -37,7 +48,7 @@ export async function buildAnalysis(input: AnalyzeInput): Promise<AnalysisReport
       bearish: parsed.bearish ?? [],
       outlook: parsed.outlook ?? "",
       riskLevel: parsed.riskLevel ?? "medium",
-      recommendation: parsed.recommendation ?? deriveRecommendation(parsed),
+      recommendation: parsed.recommendation ?? mapVerdictRec(verdict.recommendation),
       fromCache: false,
       source: "local",
     };
@@ -106,7 +117,13 @@ function buildNewsSummary(news?: NewsItem[]): string {
     .join("\n");
 }
 
-function renderPrompt(quote: Quote, series: string, fundamentals: string, news: string): string {
+function renderPrompt(
+  quote: Quote,
+  series: string,
+  fundamentals: string,
+  news: string,
+  verdict: string,
+): string {
   return `Analyze the following equity by SYNTHESIZING three data domains together:
 technical chart indicators, fundamental financials, and recent news.
 Each bullish/bearish point should reference its source as a tag: [차트], [재무], or [뉴스].
@@ -139,6 +156,11 @@ ${fundamentals}
 == 최근 뉴스 헤드라인 ==
 ${news}
 
+== 다요인 종합 스코어 (규칙 엔진이 계산한 7축 점수) ==
+${verdict}
+
+위 종합 스코어를 참고하되 맹신하지 말고, 차트·재무·뉴스·시장분위기가 서로 상충하면 그 점을 명확히 짚으세요.
+recommendation은 종합점수·각 축의 균형을 반영해 정하세요.
 뉴스 헤드라인이 가격/재무에 주는 함의를 해석에 반영하세요.
 불확실성은 솔직히 기술하세요. 한국어로, JSON만 출력.`;
 }
@@ -153,17 +175,8 @@ function parseModelJson(text: string): Partial<AnalysisReport> {
   }
 }
 
-/** 강세/약세 포인트 개수로 매수/관망/매도 관점 도출 (모델이 누락 시 폴백) */
-function deriveRecommendation(p: Partial<AnalysisReport>): "buy" | "hold" | "sell" {
-  const bull = p.bullish?.length ?? 0;
-  const bear = p.bearish?.length ?? 0;
-  const diff = bull - bear;
-  if (diff >= 2) return "buy";
-  if (diff <= -2) return "sell";
-  return "hold";
-}
 
-function mockAnalysis({ quote, history, fundamentals, news }: AnalyzeInput): AnalysisReport {
+function mockAnalysis({ quote, history, fundamentals, news, marketScore }: AnalyzeInput): AnalysisReport {
   const e20 = ema(history, 20).at(-1)?.value ?? quote.price;
   const e60 = ema(history, 60).at(-1)?.value ?? quote.price;
   const rsiLast = rsi(history, 14).at(-1)?.value ?? 50;
@@ -219,7 +232,9 @@ function mockAnalysis({ quote, history, fundamentals, news }: AnalyzeInput): Ana
     bearish: bearish.slice(0, 4),
     outlook: `[차트] 단기적으로 EMA20을 지지선으로 ${direction} 추세 연장 여부가 관건이며, RSI ${rsiLast.toFixed(1)} 구간에서는 ${momentum === "과매수" ? "이익 실현 매물" : momentum === "과매도" ? "기술적 반등" : "방향성 대기"}을 염두에 둡니다. [재무] ${fundamentals ? `PER ${num(fundamentals.peRatio)}·매출성장 ${pct(fundamentals.revenueGrowth)} 등 밸류에이션과 성장성을 함께 점검해야 합니다.` : "펀더멘털 데이터 보완이 필요합니다."} [뉴스] 최근 ${newsCount}건의 헤드라인이 실적/규제/제품 이벤트를 시사할 수 있어 본문 확인이 권장됩니다. 세 영역의 신호가 일치할 때 추세 신뢰도가 높아집니다.`,
     riskLevel: risk,
-    recommendation: deriveRecommendation({ bullish, bearish }),
+    recommendation: mapVerdictRec(
+      computeVerdict({ quote, candles: history, fundamentals, news, marketScore }).recommendation,
+    ),
     fromCache: false,
     source: "mock",
   };
