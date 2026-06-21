@@ -6,9 +6,20 @@ import type { ClientMessage, ServerMessage } from "@/party/types";
 const PARTYKIT_HOST =
   process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "127.0.0.1:1999";
 
+// 페이지 세션 동안 안정적인 플레이어 식별자.
+// 네트워크가 끊겼다 붙어도(자동 재접속) 같은 id 로 같은 플레이어로 복귀한다.
+// SPEC 8장: localStorage/sessionStorage 금지 → 메모리(ref)에만 보관.
+function makeConnId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2);
+}
+
 // 방에 연결하고 서버 스냅샷을 store 에 반영한다. 입력 전송 함수를 돌려준다.
 export function usePartyRoom(roomCode: string, nickname: string) {
   const socketRef = useRef<PartySocket | null>(null);
+  const connIdRef = useRef<string>(makeConnId());
   const setSnapshot = useGameStore((s) => s.setSnapshot);
   const setStatus = useGameStore((s) => s.setStatus);
   const reset = useGameStore((s) => s.reset);
@@ -20,6 +31,7 @@ export function usePartyRoom(roomCode: string, nickname: string) {
     const socket = new PartySocket({
       host: PARTYKIT_HOST,
       room: roomCode,
+      id: connIdRef.current, // 안정적 식별자 → 재접속 시 동일 플레이어
     });
     socketRef.current = socket;
 

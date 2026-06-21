@@ -3,11 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-// 랜딩: 방 생성 / 코드로 입장. (SPEC M0~M1)
+// 랜딩: 방 생성 / 코드로 입장. (SPEC M1)
+// 사람이 읽고 부르기 쉬운 6자리. 혼동되는 글자(0/O, 1/I/L) 제외.
 function makeRoomCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
   let code = "";
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 6; i++) {
     code += chars[Math.floor(Math.random() * chars.length)];
   }
   return code;

@@ -27,7 +27,15 @@ export default class GameServer implements Party.Server {
   }
 
   onConnect(conn: Party.Connection) {
-    // 연결만으로는 플레이어로 등록하지 않는다. "join" 메시지에서 닉네임과 함께 등록.
+    // 알려진 플레이어가 같은 식별자로 다시 붙으면(재접속) 즉시 연결 상태로 복귀.
+    const known = this.state.players.find((p) => p.id === conn.id);
+    if (known) {
+      known.connected = true;
+      this.broadcastSnapshot();
+      return;
+    }
+    // 처음 보는 연결은 아직 플레이어로 등록하지 않는다.
+    // "join" 메시지에서 닉네임과 함께 등록한다.
     this.sendSnapshotTo(conn);
   }
 
