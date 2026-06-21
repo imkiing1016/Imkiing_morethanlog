@@ -69,6 +69,13 @@
   - 선언 != 실제 → **신뢰도 −1**
 - 손익 정산 후 다음 회차로.
 
+### 페이즈 전환 규칙 (서버 권위)
+- 모든 페이즈 전환은 **서버만** 결정하고 전체에 브로드캐스트한다. 클라는 페이즈를 바꿀 수 없고, 입력 완료 시 **"준비됨(ready)" 신호**만 보낸다.
+- 순서는 위 ①~⑤ 고정. 절대 건너뛰지 않는다. ⑤ 정산이 끝나면 `round`가 1 증가하고 다음 회차 ①로 돌아간다. `round`가 `maxRounds`를 넘기면 `ENDED`.
+- **조기 전환**: 연결된 모든 플레이어가 해당 페이즈에서 ready 신호를 보내면 타이머 전이라도 즉시 다음 페이즈로 넘어간다. **단 거래(TRADE) 페이즈는 예외** — `phaseDeadline` 타이머가 끝날 때만 서버가 자동 전환한다(실시간 호가를 보장하기 위해).
+- 각 페이즈로 진입할 때 플레이어의 `ready`는 모두 false로 초기화된다.
+- 페이즈 전환마다 사람이 읽을 한 줄을 `GameState.log`에 남긴다.
+
 ---
 
 ## 3. 핵심 메커니즘 상세
@@ -147,6 +154,8 @@ interface PlayerState {
   pendingPosition?: Array<{ companyOwnerId: string; shares: number /* +매수 -매도 */ }>;
   // 공개: 이번 회차 선언
   declaration?: Declaration;
+  // 공개: 이번 페이즈 입력 완료 신호(서버의 조기 전환 판단용). 매 페이즈 진입 시 false.
+  ready: boolean;
   connected: boolean;
 }
 

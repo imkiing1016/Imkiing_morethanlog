@@ -43,6 +43,8 @@ export interface PlayerState {
   pendingPosition?: Array<{ companyOwnerId: string; shares: number /* +매수 -매도 */ }>;
   // 공개: 이번 회차 선언
   declaration?: Declaration;
+  // 공개: 이번 페이즈 입력 완료 신호(서버 조기 전환 판단용). 매 페이즈 진입 시 false.
+  ready: boolean;
   connected: boolean;
 }
 
@@ -65,7 +67,17 @@ export interface GameState {
 
 export type ClientMessage =
   | { type: "join"; nickname: string }
-  | { type: "start" }; // 호스트만 (M2부터 실제 전환)
+  | { type: "start" } // 호스트만: LOBBY → 첫 회차 INFO
+  | { type: "ready" }; // 현재 페이즈 입력 완료 신호 (TRADE 제외 조기 전환용)
+
+// 회차 내 페이즈 진행 순서 — SPEC 2장 고정. 절대 건너뛰지 않는다.
+export const ROUND_PHASES: Phase[] = [
+  "INFO",
+  "POSITION",
+  "DECLARE",
+  "TRADE",
+  "SETTLE",
+];
 
 // 서버 → 클라: 플레이어별 개인화 스냅샷.
 // 비공개 필드(privateInfo/pendingPosition)는 본인 것만 채워 보낸다.

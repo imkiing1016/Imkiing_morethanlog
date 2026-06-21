@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import Lobby from "@/components/Lobby";
+import Room from "@/components/Room";
 
 // 방 컨테이너: 닉네임 입력 후 로비에 합류. (SPEC M0~M1)
 export default function RoomPage() {
@@ -44,5 +44,5 @@ export default function RoomPage() {
     );
   }
 
-  return <Lobby roomCode={code} nickname={nickname.trim()} />;
+  return <Room roomCode={code} nickname={nickname.trim()} />;
 }

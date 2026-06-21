@@ -1,20 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { usePartyRoom } from "@/lib/usePartyRoom";
 import { useGameStore } from "@/lib/store";
 import { ROOM } from "@/party/balance";
+import type { ClientMessage } from "@/party/types";
 
 // 로비: 플레이어 목록 / 링크 공유 / 호스트 시작. (SPEC M1)
-// M0 범위에서는 입장과 목록 표시까지 동작. 시작 버튼은 M2에서 페이즈에 연결된다.
+// 소켓 연결은 상위 Room 이 유지하고, send 만 내려받는다.
 export default function Lobby({
   roomCode,
-  nickname,
+  send,
 }: {
   roomCode: string;
-  nickname: string;
+  send: (message: ClientMessage) => void;
 }) {
-  const { send } = usePartyRoom(roomCode, nickname);
   const status = useGameStore((s) => s.status);
   const state = useGameStore((s) => s.state);
   const selfId = useGameStore((s) => s.selfId);
