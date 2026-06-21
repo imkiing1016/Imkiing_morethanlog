@@ -15,9 +15,22 @@ export default function Lobby({
   nickname: string;
 }) {
   const { send } = usePartyRoom(roomCode, nickname);
+  const status = useGameStore((s) => s.status);
   const state = useGameStore((s) => s.state);
   const selfId = useGameStore((s) => s.selfId);
   const [copied, setCopied] = useState(false);
+
+  const statusLabel: Record<typeof status, string> = {
+    connecting: "연결 중…",
+    connected: "연결됨",
+    disconnected: "연결 끊김",
+  };
+  const statusColor =
+    status === "connected"
+      ? "text-success"
+      : status === "connecting"
+        ? "text-warning"
+        : "text-danger";
 
   function copyLink() {
     if (typeof window === "undefined") return;
@@ -43,7 +56,13 @@ export default function Lobby({
   return (
     <main className="flex flex-col gap-6 pt-8">
       <header className="flex flex-col gap-1">
-        <p className="text-sm text-neutral">방 코드</p>
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-neutral">방 코드</p>
+          <span className={`flex items-center gap-1.5 text-sm ${statusColor}`}>
+            <span className="h-2 w-2 rounded-full bg-current" />
+            {statusLabel[status]}
+          </span>
+        </div>
         <div className="flex items-center justify-between">
           <p className="text-2xl font-medium tracking-widest">{roomCode}</p>
           <button

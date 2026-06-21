@@ -10,11 +10,13 @@ const PARTYKIT_HOST =
 export function usePartyRoom(roomCode: string, nickname: string) {
   const socketRef = useRef<PartySocket | null>(null);
   const setSnapshot = useGameStore((s) => s.setSnapshot);
+  const setStatus = useGameStore((s) => s.setStatus);
   const reset = useGameStore((s) => s.reset);
 
   useEffect(() => {
     if (!roomCode || !nickname) return;
 
+    setStatus("connecting");
     const socket = new PartySocket({
       host: PARTYKIT_HOST,
       room: roomCode,
@@ -22,9 +24,14 @@ export function usePartyRoom(roomCode: string, nickname: string) {
     socketRef.current = socket;
 
     socket.addEventListener("open", () => {
+      setStatus("connected");
       const join: ClientMessage = { type: "join", nickname };
       socket.send(JSON.stringify(join));
     });
+
+    // partysocket 은 자동 재연결한다. 끊기면 재연결 시도 동안 connecting 으로 표시.
+    socket.addEventListener("close", () => setStatus("connecting"));
+    socket.addEventListener("error", () => setStatus("connecting"));
 
     socket.addEventListener("message", (event) => {
       try {
@@ -42,7 +49,7 @@ export function usePartyRoom(roomCode: string, nickname: string) {
       socketRef.current = null;
       reset();
     };
-  }, [roomCode, nickname, setSnapshot, reset]);
+  }, [roomCode, nickname, setSnapshot, setStatus, reset]);
 
   function send(message: ClientMessage) {
     socketRef.current?.send(JSON.stringify(message));
