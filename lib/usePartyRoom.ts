@@ -3,10 +3,29 @@ import PartySocket from "partysocket";
 import { useGameStore } from "./store";
 import type { ClientMessage, ServerMessage } from "@/game/types";
 
-// 실시간 서버 호스트. 로컬 기본값은 127.0.0.1:1999.
-// 배포 시 Render 서버 호스트로 교체(NEXT_PUBLIC_REALTIME_HOST).
-const REALTIME_HOST =
-  process.env.NEXT_PUBLIC_REALTIME_HOST ?? "127.0.0.1:1999";
+// 배포된 실시간 서버 호스트(Render). 환경변수가 없거나 잘못돼도 붙도록 기본값으로 둔다.
+const PROD_REALTIME_HOST = "imkiing-morethanlog.onrender.com";
+
+// 입력값에서 프로토콜/슬래시/공백을 제거해 순수 호스트만 남긴다.
+function cleanHost(value: string | undefined): string {
+  return (value ?? "")
+    .trim()
+    .replace(/^[a-z]+:\/\//i, "") // https:// wss:// 등 제거
+    .replace(/\/+$/, ""); // 끝 슬래시 제거
+}
+
+// 실시간 서버 호스트 결정:
+// 1) 환경변수가 있으면 그것(정리해서), 2) 브라우저가 실제 도메인이면 Render 기본값,
+// 3) 그 외(로컬 개발) 127.0.0.1:1999.
+function resolveRealtimeHost(): string {
+  const fromEnv = cleanHost(process.env.NEXT_PUBLIC_REALTIME_HOST);
+  if (fromEnv) return fromEnv;
+  if (typeof window !== "undefined") {
+    const h = window.location.hostname;
+    if (h !== "localhost" && h !== "127.0.0.1") return PROD_REALTIME_HOST;
+  }
+  return "127.0.0.1:1999";
+}
 
 // 페이지 세션 동안 안정적인 플레이어 식별자.
 // 네트워크가 끊겼다 붙어도(자동 재접속) 같은 id 로 같은 플레이어로 복귀한다.
@@ -31,7 +50,7 @@ export function usePartyRoom(roomCode: string, nickname: string) {
 
     setStatus("connecting");
     const socket = new PartySocket({
-      host: REALTIME_HOST,
+      host: resolveRealtimeHost(),
       room: roomCode,
       id: connIdRef.current, // 안정적 식별자 → 재접속 시 동일 플레이어
     });
