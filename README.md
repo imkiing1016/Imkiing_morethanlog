@@ -8,32 +8,33 @@
 ## 기술 스택
 
 - Next.js (App Router) + TypeScript + Tailwind CSS
-- PartyKit — 방(room) 단위 권위 서버. **모든 게임 상태 계산은 서버에서만**.
+- Node WebSocket 서버(`ws`) — 방(room) 단위 권위 서버. **모든 게임 상태 계산은 서버에서만**.
 - Zustand — 서버 스냅샷 수신 → 렌더
+- 배포: 웹 → Vercel, 실시간 서버 → Render ([DEPLOY.md](./DEPLOY.md))
 
 ## 개발 실행
 
-PartyKit 서버와 Next.js 개발 서버를 각각 띄운다(터미널 2개).
+실시간 서버와 Next.js 개발 서버를 각각 띄운다(터미널 2개).
 
 ```bash
 npm install
 cp .env.example .env.local   # 필요 시 호스트 수정
 
-# 터미널 1: 권위 서버
-npm run party     # 127.0.0.1:1999
+# 터미널 1: 권위(실시간) 서버
+npm run server    # 127.0.0.1:1999
 
 # 터미널 2: 웹
 npm run dev       # http://localhost:3000
 ```
 
-> 두 서버가 모두 떠 있어야 한다. PartyKit(`npm run party`)이 꺼져 있으면
+> 두 서버가 모두 떠 있어야 한다. 실시간 서버(`npm run server`)가 꺼져 있으면
 > 화면 상단 연결 배지가 계속 "연결 중…" 상태로 남는다.
 
 ## M0 검증: 두 브라우저 탭으로 같은 room 접속
 
 빈 room 생성과 클라 연결을 다음 순서로 확인한다.
 
-1. `npm run party` 와 `npm run dev` 를 각각 실행한다.
+1. `npm run server` 와 `npm run dev` 를 각각 실행한다.
 2. **탭 A**: `http://localhost:3000` 접속 → `새 방 만들기` → 닉네임 입력 → 입장.
    - 상단에 방 코드(예: `K7M2Q`)와 초록색 **연결됨** 배지가 보인다.
 3. 탭 A의 방 코드를 복사한다(또는 `링크 공유` 버튼).
@@ -47,7 +48,7 @@ npm run dev       # http://localhost:3000
 
 ## 현재 진행 (마일스톤)
 
-- [x] **M0 — 스캐폴드**: Next.js + TS + Tailwind + PartyKit 연결, 빈 방 생성/입장.
+- [x] **M0 — 스캐폴드**: Next.js + TS + Tailwind + WebSocket 서버 연결, 빈 방 생성/입장.
 - [x] **M1 — 로비/방**: 방 코드(6자리)·링크 공유·닉네임·호스트 시작, 3~6명, 재접속.
 - [x] **M2 — 5페이즈 상태머신**: 서버 권위 전환(INFO→POSITION→DECLARE→TRADE→SETTLE),
       ready 조기 전환(거래 제외), 거래 타이머 자동 전환, 회차 순환. 데이터는 더미.

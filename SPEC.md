@@ -11,12 +11,15 @@
 | 레이어 | 선택 | 비고 |
 |---|---|---|
 | 프레임워크 | Next.js (App Router) + TypeScript | 기존 환경 유지 |
-| 배포 | Vercel | 기존 환경 유지 |
-| 실시간 동기화 | PartyKit | 방(room) 단위 상태. 게임 1판 = 1 room |
-| 권위 서버 | PartyKit server (room durable object) | **모든 게임 상태 계산은 서버에서만** |
+| 웹 배포 | Vercel | 정적/SSR 웹 |
+| 실시간 동기화 | Node WebSocket 서버 (`ws`) | 방(room) 단위 상태. 게임 1판 = 1 room. 호스팅은 Render(브라우저 GitHub 배포) |
+| 권위 서버 | 위 WebSocket 서버 (in-memory `GameRoom`) | **모든 게임 상태 계산은 서버에서만** |
 | 영속 DB | Supabase Postgres | 방/판/결과 기록 (선택, MVP에선 in-memory로 시작 가능) |
 | 상태관리(클라) | Zustand | 서버 스냅샷 수신 → 렌더 |
+| 클라 소켓 | partysocket (재연결 래퍼) | 일반 WebSocket. 서버와 무관하게 재연결만 담당 |
 | 스타일 | Tailwind CSS | 디자인 토큰은 5장 참고 |
+
+> 실시간 계층은 원래 PartyKit이었으나, 서비스 불안정으로 **자체 호스팅 Node WebSocket 서버**로 교체했다(서버 권위 원칙은 동일). 방 상태는 서버 메모리의 `GameRoom` 인스턴스(roomCode 키)로 보관한다.
 
 **핵심 원칙: 클라이언트는 입력만 보내고, 서버가 상태를 계산해 모든 방 인원에게 브로드캐스트한다.** 주가/거래/이벤트/정산을 클라가 계산하면 절대 안 된다(치팅 방지). 클라는 서버가 내려준 스냅샷을 그릴 뿐이다.
 

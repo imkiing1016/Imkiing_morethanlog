@@ -1,4 +1,3 @@
-import type * as Party from "partykit/server";
 import { BALANCE, ROOM } from "./balance";
 import { ROUND_PHASES } from "./types";
 import type {
@@ -9,6 +8,12 @@ import type {
   Sector,
   ServerMessage,
 } from "./types";
+
+// 한 연결의 추상화. 전송 계층(ws 등)과 무관하게 게임 로직만 다룬다.
+export interface Conn {
+  id: string;
+  send(data: string): void;
+}
 
 const SECTORS: Sector[] = [
   "BIO",
@@ -31,16 +36,16 @@ const PHASE_LOG: Record<Phase, string> = {
   ENDED: "게임 종료",
 };
 
-// 권위 서버 — SPEC.md 0장/2장/8장.
-// 모든 게임 상태 계산과 페이즈 전환은 서버에서만. 클라는 입력만 보낸다.
-// M2 범위: 5페이즈 상태머신을 더미 데이터로 한 회차씩 순환. 실제 손익/주가는 M3.
-export default class GameServer implements Party.Server {
+// 권위 게임 방 — SPEC.md 0장/2장/8장.
+// 모든 게임 상태 계산과 페이즈 전환은 여기(서버)에서만. 전송 계층은 Conn 으로 주입된다.
+export class GameRoom {
   state: GameState;
+  private conns = new Map<string, Conn>();
   private tradeTimer?: ReturnType<typeof setTimeout>;
 
-  constructor(readonly room: Party.Room) {
+  constructor(roomCode: string) {
     this.state = {
-      roomCode: room.id,
+      roomCode,
       phase: "LOBBY",
       round: 0,
       maxRounds: ROOM.defaultMaxRounds,
@@ -51,47 +56,58 @@ export default class GameServer implements Party.Server {
     };
   }
 
-  onConnect(conn: Party.Connection) {
-    // 알려진 플레이어가 같은 식별자로 다시 붙으면(재접속) 즉시 연결 상태로 복귀.
+  get connectionCount(): number {
+    return this.conns.size;
+  }
+
+  // --- 연결 수명주기 ---
+
+  addConn(conn: Conn) {
+    this.conns.set(conn.id, conn);
+
     const known = this.state.players.find((p) => p.id === conn.id);
     if (known) {
+      // 재접속: 같은 식별자면 즉시 연결 상태로 복귀.
       known.connected = true;
       this.broadcastSnapshot();
       return;
     }
-    // 처음 보는 연결은 아직 플레이어로 등록하지 않는다.
-    // "join" 메시지에서 닉네임과 함께 등록한다.
+    // 처음 보는 연결은 아직 플레이어로 등록하지 않는다. "join" 에서 등록.
     this.sendSnapshotTo(conn);
   }
 
-  onClose(conn: Party.Connection) {
+  // 같은 conn 인스턴스일 때만 제거(재접속 레이스로 새 연결을 지우지 않도록).
+  removeConn(conn: Conn) {
+    if (this.conns.get(conn.id) !== conn) return;
+    this.conns.delete(conn.id);
+
     const player = this.state.players.find((p) => p.id === conn.id);
     if (!player) return;
     player.connected = false;
-    // 떠난 사람을 빼고 남은 전원이 ready 면 조기 전환될 수 있다.
     if (!this.tryEarlyAdvance()) this.broadcastSnapshot();
   }
 
-  onMessage(raw: string, sender: Party.Connection) {
+  handleMessage(id: string, raw: string) {
     let msg: ClientMessage;
     try {
       msg = JSON.parse(raw) as ClientMessage;
     } catch {
       return;
     }
-
     switch (msg.type) {
       case "join":
-        this.handleJoin(sender.id, msg.nickname);
+        this.handleJoin(id, msg.nickname);
         break;
       case "start":
-        this.handleStart(sender.id);
+        this.handleStart(id);
         break;
       case "ready":
-        this.handleReady(sender.id);
+        this.handleReady(id);
         break;
     }
   }
+
+  // --- 입력 처리 ---
 
   private handleJoin(id: string, nickname: string) {
     const existing = this.state.players.find((p) => p.id === id);
@@ -102,7 +118,6 @@ export default class GameServer implements Party.Server {
       return;
     }
 
-    // 로비 단계에서만, 정원 내에서만 신규 입장 허용.
     if (this.state.phase !== "LOBBY") return;
     if (this.state.players.length >= ROOM.maxPlayers) return;
 
@@ -115,8 +130,6 @@ export default class GameServer implements Party.Server {
       connected: true,
     };
     this.state.players.push(player);
-
-    // 첫 입장자가 호스트.
     if (!this.state.hostId) this.state.hostId = id;
 
     this.broadcastSnapshot();
@@ -146,7 +159,8 @@ export default class GameServer implements Party.Server {
     if (!this.tryEarlyAdvance()) this.broadcastSnapshot();
   }
 
-  // 연결된 전원이 ready 면(거래 제외) 타이머 전이라도 즉시 다음 페이즈로.
+  // --- 페이즈 상태머신 (SPEC 2장) ---
+
   private tryEarlyAdvance(): boolean {
     if (!ROUND_PHASES.includes(this.state.phase)) return false;
     if (this.state.phase === "TRADE") return false;
@@ -157,10 +171,9 @@ export default class GameServer implements Party.Server {
     return true;
   }
 
-  // SPEC 2장 순서 고정. 절대 건너뛰지 않는다.
   private advancePhase() {
     const idx = ROUND_PHASES.indexOf(this.state.phase);
-    if (idx === -1) return; // 회차 밖(LOBBY/ENDED 등)에서는 무시
+    if (idx === -1) return;
 
     if (idx < ROUND_PHASES.length - 1) {
       this.enterPhase(ROUND_PHASES[idx + 1]);
@@ -183,7 +196,6 @@ export default class GameServer implements Party.Server {
     for (const p of this.state.players) p.ready = false;
 
     if (phase === "TRADE") {
-      // 거래 페이즈만 타이머. 종료 시 서버가 자동 전환.
       const ms = BALANCE.tradeWindowSec * 1000;
       this.state.phaseDeadline = Date.now() + ms;
       this.tradeTimer = setTimeout(() => this.onTradeTimeout(), ms);
@@ -230,7 +242,6 @@ export default class GameServer implements Party.Server {
     });
   }
 
-  // 회차가 바뀔 때 회차 단위 필드 초기화(ready 는 enterPhase 에서).
   private resetRoundScopedFields() {
     for (const p of this.state.players) {
       p.declaration = undefined;
@@ -246,8 +257,8 @@ export default class GameServer implements Party.Server {
     }
   }
 
-  // 플레이어별 개인화 스냅샷: 비공개 필드는 본인 것만 채워 보낸다. (SPEC 4장/8장)
-  // M3 에서 privateInfo/pendingPosition 이 실제로 채워지면 이 마스킹이 동작한다.
+  // --- 스냅샷 (개인화: 비공개 필드는 본인 것만) ---
+
   private personalizedState(viewerId: string): GameState {
     return {
       ...this.state,
@@ -259,7 +270,7 @@ export default class GameServer implements Party.Server {
     };
   }
 
-  private sendSnapshotTo(conn: Party.Connection) {
+  private sendSnapshotTo(conn: Conn) {
     const message: ServerMessage = {
       type: "snapshot",
       state: this.personalizedState(conn.id),
@@ -269,10 +280,8 @@ export default class GameServer implements Party.Server {
   }
 
   private broadcastSnapshot() {
-    for (const conn of this.room.getConnections()) {
+    for (const conn of this.conns.values()) {
       this.sendSnapshotTo(conn);
     }
   }
 }
-
-GameServer satisfies Party.Worker;

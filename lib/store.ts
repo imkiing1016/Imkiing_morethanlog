@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { GameState } from "@/party/types";
+import type { GameState } from "@/game/types";
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 

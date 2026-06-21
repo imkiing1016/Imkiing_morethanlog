@@ -1,10 +1,12 @@
 import { useEffect, useRef } from "react";
 import PartySocket from "partysocket";
 import { useGameStore } from "./store";
-import type { ClientMessage, ServerMessage } from "@/party/types";
+import type { ClientMessage, ServerMessage } from "@/game/types";
 
-const PARTYKIT_HOST =
-  process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "127.0.0.1:1999";
+// 실시간 서버 호스트. 로컬 기본값은 127.0.0.1:1999.
+// 배포 시 Render 서버 호스트로 교체(NEXT_PUBLIC_REALTIME_HOST).
+const REALTIME_HOST =
+  process.env.NEXT_PUBLIC_REALTIME_HOST ?? "127.0.0.1:1999";
 
 // 페이지 세션 동안 안정적인 플레이어 식별자.
 // 네트워크가 끊겼다 붙어도(자동 재접속) 같은 id 로 같은 플레이어로 복귀한다.
@@ -29,7 +31,7 @@ export function usePartyRoom(roomCode: string, nickname: string) {
 
     setStatus("connecting");
     const socket = new PartySocket({
-      host: PARTYKIT_HOST,
+      host: REALTIME_HOST,
       room: roomCode,
       id: connIdRef.current, // 안정적 식별자 → 재접속 시 동일 플레이어
     });

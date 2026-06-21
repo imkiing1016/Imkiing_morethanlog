@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/lib/store";
-import type { ClientMessage, Phase } from "@/party/types";
+import type { ClientMessage, Phase } from "@/game/types";
 
 // M2 임시 화면: 5페이즈 상태머신 검증용 최소 UI. 진짜 화면은 M4.
 // 서버가 내려준 phase/round/log/phaseDeadline 을 그릴 뿐, 전환은 서버가 결정.

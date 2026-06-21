@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useGameStore } from "@/lib/store";
-import { ROOM } from "@/party/balance";
-import type { ClientMessage } from "@/party/types";
+import { ROOM } from "@/game/balance";
+import type { ClientMessage } from "@/game/types";
 
 // 로비: 플레이어 목록 / 링크 공유 / 호스트 시작. (SPEC M1)
 // 소켓 연결은 상위 Room 이 유지하고, send 만 내려받는다.
