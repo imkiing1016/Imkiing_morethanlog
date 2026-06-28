@@ -29,14 +29,15 @@ export const SECTOR_LABELS: Record<Sector, string> = {
   DEFENSE: "방산",
 };
 
-// 캐주얼 동물 컨셉. 섹터마다 마스코트 동물 1마리(자리표시 이모지, 후일 픽셀아트로 교체).
+// 섹터별 토픽 아이콘(자리표시 이모지). 분야를 바로 알 수 있게.
+// 후일 픽셀아트/일러스트로 교체 가능.
 export const SECTOR_MASCOTS: Record<Sector, string> = {
-  IT_GAME: "🦊", // 영리한 여우
-  BEAUTY: "🐰", // 토끼
-  CONSTRUCTION: "🐻", // 곰
-  RETAIL: "🐱", // 고양이
-  BIO: "🐼", // 판다
-  DEFENSE: "🐺", // 늑대
+  IT_GAME: "🎮", // 게임 컨트롤러
+  BEAUTY: "💄", // 립스틱
+  CONSTRUCTION: "🏗️", // 건설 크레인
+  RETAIL: "🛒", // 쇼핑 카트
+  BIO: "🧬", // DNA
+  DEFENSE: "🛡️", // 방패
 };
 
 export type Phase =
