@@ -35,6 +35,14 @@
 
 각 플레이어는 **회사 하나 = 주식 하나**다. 플레이어는 자기 회사를 운영하면서 동시에 남의 주식을 사고판다.
 
+### 1.1 게임 시작 — 사업 설립 (SETUP 페이즈)
+- 호스트가 시작하면 로비 → **SETUP** 페이즈로 간다. 각 플레이어는 자기 사업을 만든다:
+  - **카테고리 1개 선택** (6종): `IT_GAME(IT/게임)`, `BEAUTY(뷰티)`, `CONSTRUCTION(건설)`, `RETAIL(유통)`, `BIO(바이오)`, `DEFENSE(방산)`
+  - **회사명 직접 입력** (최대 20자)
+- 모든 플레이어의 **시작 시총은 동일**하다: `startingPrice × sharesOutstanding`(전원 같은 값). 시작 신뢰도/기술 레벨도 동일.
+- 카테고리 중복 허용(서로 다른 플레이어가 같은 카테고리 가능).
+- 연결된 전원이 사업 설립을 마치면 1회차 정보 페이즈로 넘어간다.
+
 ---
 
 ## 2. 코어 루프 (1회차 = 5단계)
@@ -131,8 +139,9 @@
 TypeScript 타입으로 정의. 서버(PartyKit room)가 이 상태를 보유하고 클라에 스냅샷을 내린다.
 
 ```ts
-type Sector = 'BIO' | 'TECH' | 'CONSTRUCTION' | 'LOGISTICS' | 'ENERGY' | 'FINANCE';
-type Phase = 'INFO' | 'POSITION' | 'DECLARE' | 'TRADE' | 'SETTLE' | 'MANAGE' | 'LOBBY' | 'ENDED';
+// 사업 카테고리 6종 (라벨: IT/게임, 뷰티, 건설, 유통, 바이오, 방산)
+type Sector = 'IT_GAME' | 'BEAUTY' | 'CONSTRUCTION' | 'RETAIL' | 'BIO' | 'DEFENSE';
+type Phase = 'LOBBY' | 'SETUP' | 'INFO' | 'POSITION' | 'DECLARE' | 'TRADE' | 'SETTLE' | 'MANAGE' | 'ENDED';
 type Declaration = 'HYPE' | 'WARN' | 'SILENT';
 type Direction = 'BULLISH' | 'BEARISH';
 

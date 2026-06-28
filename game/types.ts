@@ -1,22 +1,43 @@
 // 서버 권위 상태 타입 — SPEC.md 4장을 단일 진실 원천으로 한다.
-// 서버(PartyKit room)가 이 상태를 보유하고 클라에 스냅샷을 내린다.
+// 서버(WebSocket room)가 이 상태를 보유하고 클라에 스냅샷을 내린다.
 
+// 사업 카테고리 6종 (SPEC 1.1)
 export type Sector =
-  | "BIO"
-  | "TECH"
+  | "IT_GAME"
+  | "BEAUTY"
   | "CONSTRUCTION"
-  | "LOGISTICS"
-  | "ENERGY"
-  | "FINANCE";
+  | "RETAIL"
+  | "BIO"
+  | "DEFENSE";
+
+// 선택 가능한 카테고리 목록과 한글 라벨(서버·클라 공용).
+export const SECTORS: Sector[] = [
+  "IT_GAME",
+  "BEAUTY",
+  "CONSTRUCTION",
+  "RETAIL",
+  "BIO",
+  "DEFENSE",
+];
+
+export const SECTOR_LABELS: Record<Sector, string> = {
+  IT_GAME: "IT/게임",
+  BEAUTY: "뷰티",
+  CONSTRUCTION: "건설",
+  RETAIL: "유통",
+  BIO: "바이오",
+  DEFENSE: "방산",
+};
 
 export type Phase =
+  | "LOBBY"
+  | "SETUP"
   | "INFO"
   | "POSITION"
   | "DECLARE"
   | "TRADE"
   | "SETTLE"
   | "MANAGE"
-  | "LOBBY"
   | "ENDED";
 
 export type Declaration = "HYPE" | "WARN" | "SILENT";
@@ -67,7 +88,8 @@ export interface GameState {
 
 export type ClientMessage =
   | { type: "join"; nickname: string }
-  | { type: "start" } // 호스트만: LOBBY → 첫 회차 INFO
+  | { type: "start" } // 호스트만: LOBBY → SETUP(사업 설립)
+  | { type: "setup"; sector: Sector; name: string } // 사업 설립: 카테고리 + 회사명
   | { type: "ready" }; // 현재 페이즈 입력 완료 신호 (TRADE 제외 조기 전환용)
 
 // 회차 내 페이즈 진행 순서 — SPEC 2장 고정. 절대 건너뛰지 않는다.

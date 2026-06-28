@@ -1,5 +1,5 @@
 import { BALANCE, ROOM } from "./balance";
-import { ROUND_PHASES } from "./types";
+import { ROUND_PHASES, SECTORS } from "./types";
 import type {
   ClientMessage,
   GameState,
@@ -15,17 +15,11 @@ export interface Conn {
   send(data: string): void;
 }
 
-const SECTORS: Sector[] = [
-  "BIO",
-  "TECH",
-  "CONSTRUCTION",
-  "LOGISTICS",
-  "ENERGY",
-  "FINANCE",
-];
+const SHARES_OUTSTANDING = 1000; // 전원 동일 → 시작 시총 동일 (price × shares)
 
 // 페이즈 진입 시 남길 로그 문구 (사람이 읽는 한 줄).
 const PHASE_LOG: Record<Phase, string> = {
+  SETUP: "사업 설립 — 카테고리/회사명 설정",
   INFO: "정보 페이즈 — 비공개 정보 수신",
   POSITION: "사전 포지션 페이즈 — 비공개 매매",
   DECLARE: "선언 페이즈 — 전망 카드 공개",
@@ -84,7 +78,7 @@ export class GameRoom {
     const player = this.state.players.find((p) => p.id === conn.id);
     if (!player) return;
     player.connected = false;
-    if (!this.tryEarlyAdvance()) this.broadcastSnapshot();
+    if (!this.tryAdvanceOnReady()) this.broadcastSnapshot();
   }
 
   handleMessage(id: string, raw: string) {
@@ -100,6 +94,9 @@ export class GameRoom {
         break;
       case "start":
         this.handleStart(id);
+        break;
+      case "setup":
+        this.handleSetup(id, msg.sector, msg.name);
         break;
       case "ready":
         this.handleReady(id);
@@ -135,17 +132,48 @@ export class GameRoom {
     this.broadcastSnapshot();
   }
 
-  // 호스트만, 최소 인원 충족 시: 로비 → 첫 회차 정보 페이즈.
+  // 호스트만, 최소 인원 충족 시: 로비 → SETUP(사업 설립).
   private handleStart(id: string) {
     if (id !== this.state.hostId) return;
     if (this.state.phase !== "LOBBY") return;
     const connected = this.state.players.filter((p) => p.connected);
     if (connected.length < ROOM.minPlayers) return;
 
-    this.initGame();
-    this.state.round = 1;
-    this.state.log.push({ round: 1, text: "게임 시작" });
-    this.enterPhase("INFO");
+    // 회사는 SETUP 에서 각자 만든다. 여기서는 자본만 지급하고 초기화.
+    this.state.companies = {};
+    for (const p of this.state.players) {
+      p.cash = BALANCE.startingCash;
+      p.holdings = {};
+      p.ready = false;
+      p.declaration = undefined;
+      p.privateInfo = undefined;
+      p.pendingPosition = undefined;
+    }
+    this.state.round = 0;
+    this.state.log.push({ round: 0, text: "게임 시작 — 사업 설립" });
+    this.enterPhase("SETUP");
+  }
+
+  // SETUP: 카테고리 선택 + 회사명으로 자기 사업 설립. 시작 시총은 전원 동일.
+  private handleSetup(id: string, sector: Sector, name: string) {
+    if (this.state.phase !== "SETUP") return;
+    const player = this.state.players.find((p) => p.id === id);
+    if (!player) return;
+    if (!SECTORS.includes(sector)) return;
+
+    const cleanName = name.trim().slice(0, 20) || `${player.nickname} 사`;
+    this.state.companies[id] = {
+      ownerId: id,
+      name: cleanName,
+      sector,
+      price: BALANCE.startingPrice,
+      techLevel: BALANCE.startingTech,
+      trust: BALANCE.startingTrust,
+      sharesOutstanding: SHARES_OUTSTANDING,
+    };
+    player.ready = true; // 설립 완료 = 준비 완료
+
+    if (!this.tryAdvanceOnReady()) this.broadcastSnapshot();
   }
 
   // 현재 페이즈 입력 완료. TRADE 는 ready 를 무시(타이머만으로 전환).
@@ -156,16 +184,29 @@ export class GameRoom {
     if (this.state.phase === "TRADE") return;
 
     player.ready = true;
-    if (!this.tryEarlyAdvance()) this.broadcastSnapshot();
+    if (!this.tryAdvanceOnReady()) this.broadcastSnapshot();
   }
 
   // --- 페이즈 상태머신 (SPEC 2장) ---
 
-  private tryEarlyAdvance(): boolean {
-    if (!ROUND_PHASES.includes(this.state.phase)) return false;
-    if (this.state.phase === "TRADE") return false;
+  // 연결된 전원이 준비되면 다음으로. SETUP·라운드 페이즈(거래 제외) 공통 처리.
+  private tryAdvanceOnReady(): boolean {
     const connected = this.state.players.filter((p) => p.connected);
     if (connected.length === 0) return false;
+
+    if (this.state.phase === "SETUP") {
+      // 전원이 사업 설립(회사 보유 + ready) 완료해야 1회차 시작.
+      const allSetUp = connected.every(
+        (p) => p.ready && this.state.companies[p.id]
+      );
+      if (!allSetUp) return false;
+      this.state.round = 1;
+      this.enterPhase("INFO");
+      return true;
+    }
+
+    if (!ROUND_PHASES.includes(this.state.phase)) return false;
+    if (this.state.phase === "TRADE") return false;
     if (!connected.every((p) => p.ready)) return false;
     this.advancePhase();
     return true;
@@ -218,28 +259,6 @@ export class GameRoom {
     this.state.phaseDeadline = undefined;
     this.state.log.push({ round: this.state.round, text: "게임 종료" });
     this.broadcastSnapshot();
-  }
-
-  // 더미 초기화: 플레이어마다 회사 하나 + 시작 자본. 실제 밸런스는 M3~M6.
-  private initGame() {
-    this.state.companies = {};
-    this.state.players.forEach((p, i) => {
-      p.cash = BALANCE.startingCash;
-      p.holdings = {};
-      p.ready = false;
-      p.declaration = undefined;
-      p.privateInfo = undefined;
-      p.pendingPosition = undefined;
-      this.state.companies[p.id] = {
-        ownerId: p.id,
-        name: `${p.nickname} 사`,
-        sector: SECTORS[i % SECTORS.length],
-        price: BALANCE.startingPrice,
-        techLevel: BALANCE.startingTech,
-        trust: BALANCE.startingTrust,
-        sharesOutstanding: 1000,
-      };
-    });
   }
 
   private resetRoundScopedFields() {
