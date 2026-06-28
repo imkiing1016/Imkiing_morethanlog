@@ -93,6 +93,8 @@ export interface PlayerState {
   // 공개: 게임 시작 시 자기 회사에 박은 창업 출자 금액(0 ~ BALANCE.seedInvestedMax).
   // 매 회차 정산에서 자기 회사 주가에 추가 성장률을 부여한다.
   seedInvested: number;
+  // 테스트용 봇 여부 (SPEC 1.0.5).
+  isBot?: boolean;
   connected: boolean;
 }
 
@@ -118,6 +120,7 @@ export interface GameState {
 export type ClientMessage =
   | { type: "join"; nickname: string }
   | { type: "start" } // 호스트만: LOBBY → SETUP(사업 설립)
+  | { type: "addBot" } // 호스트만, 로비에서 테스트용 봇 추가 (SPEC 1.0.5)
   // 사업 설립: 카테고리 + 회사명 + 창업 출자(0 ~ BALANCE.seedInvestedMax)
   | { type: "setup"; sector: Sector; name: string; seedInvested: number }
   // 정보 페이즈: 다른 회사의 다음 이벤트 방향 1건 구매 (현금 지불, 최대 infoBuyMax)

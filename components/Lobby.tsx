@@ -84,13 +84,14 @@ export default function Lobby({
               className="flex items-center justify-between rounded-element border border-neutral/20 px-3 py-3"
             >
               <span className="font-medium">
+                {p.isBot && "🤖 "}
                 {p.nickname}
                 {p.id === selfId && (
                   <span className="ml-2 text-sm text-neutral">(나)</span>
                 )}
               </span>
               <span className="text-sm text-neutral">
-                {p.id === state.hostId ? "호스트" : ""}
+                {p.id === state.hostId ? "호스트" : p.isBot ? "봇" : ""}
                 {!p.connected ? " · 연결 끊김" : ""}
               </span>
             </li>
@@ -99,15 +100,27 @@ export default function Lobby({
       </section>
 
       {isHost ? (
-        <button
-          disabled={!canStart}
-          onClick={() => send({ type: "start" })}
-          className="rounded-element bg-success px-4 py-3 text-paper font-medium disabled:opacity-40"
-        >
-          {canStart
-            ? "게임 시작"
-            : `최소 ${ROOM.minPlayers}명 필요`}
-        </button>
+        <div className="flex flex-col gap-2">
+          <button
+            disabled={!canStart}
+            onClick={() => send({ type: "start" })}
+            className="rounded-element bg-success px-4 py-3 text-paper font-medium disabled:opacity-40"
+          >
+            {canStart
+              ? "게임 시작"
+              : `최소 ${ROOM.minPlayers}명 필요`}
+          </button>
+          <button
+            disabled={state.players.length >= 6}
+            onClick={() => send({ type: "addBot" })}
+            className="rounded-element border-2 border-cardEdge bg-card px-4 py-3 font-medium text-ink disabled:opacity-40"
+          >
+            🤖 테스트 봇 추가 ({state.players.filter((p) => p.id.startsWith("bot_")).length})
+          </button>
+          <p className="text-xs text-neutral">
+            혼자서도 봇을 추가해 전체 게임 흐름을 테스트할 수 있어요.
+          </p>
+        </div>
       ) : (
         <p className="text-sm text-neutral">호스트가 시작하기를 기다리는 중…</p>
       )}

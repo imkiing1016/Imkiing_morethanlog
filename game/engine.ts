@@ -155,6 +155,9 @@ export class GameRoom {
       case "start":
         this.handleStart(id);
         break;
+      case "addBot":
+        this.handleAddBot(id);
+        break;
       case "setup":
         this.handleSetup(id, msg.sector, msg.name, msg.seedInvested);
         break;
@@ -329,6 +332,29 @@ export class GameRoom {
     this.broadcastSnapshot();
   }
 
+  // SPEC 1.0.5: 호스트가 테스트용 봇 추가. LOBBY 단계, 정원 내에서만.
+  private handleAddBot(id: string) {
+    if (id !== this.state.hostId) return;
+    if (this.state.phase !== "LOBBY") return;
+    if (this.state.players.length >= ROOM.maxPlayers) return;
+    const botNum = this.state.players.filter((p) => p.isBot).length + 1;
+    const botId = `bot_${Date.now().toString(36)}_${Math.random()
+      .toString(36)
+      .slice(2, 6)}`;
+    this.state.players.push({
+      id: botId,
+      nickname: `봇 ${botNum}`,
+      cash: 0,
+      holdings: {},
+      ready: false,
+      seedInvested: 0,
+      purchasedInfos: [],
+      isBot: true,
+      connected: true,
+    });
+    this.broadcastSnapshot();
+  }
+
   // 호스트만, 최소 인원 충족 시: 로비 → SETUP(사업 설립).
   private handleStart(id: string) {
     if (id !== this.state.hostId) return;
@@ -457,6 +483,9 @@ export class GameRoom {
     if (phase === "INFO") this.onEnterInfo();
     if (phase === "TRADE") this.onEnterTrade();
     if (phase === "SETTLE") this.onEnterSettle();
+
+    // SPEC 1.0.5 봇 자동 행동 스케줄.
+    this.scheduleBotActions(phase);
 
     if (phase === "TRADE") {
       const ms = BALANCE.tradeWindowSec * 1000;
@@ -728,6 +757,85 @@ export class GameRoom {
     this.state.phaseDeadline = undefined;
     this.state.log.push({ round: this.state.round, text: "게임 종료" });
     this.broadcastSnapshot();
+  }
+
+  // SPEC 1.0.5: 봇들의 자동 행동. 각 페이즈 진입 시 setTimeout 으로 약간의 지연 후 실행.
+  // 페이즈가 이미 바뀌었으면 무시한다.
+  private scheduleBotActions(phase: Phase) {
+    const bots = () =>
+      this.state.players.filter((p) => p.isBot && p.connected);
+    if (bots().length === 0) return;
+
+    const sectorList: Sector[] = [
+      "IT_GAME",
+      "BEAUTY",
+      "CONSTRUCTION",
+      "RETAIL",
+      "BIO",
+      "DEFENSE",
+    ];
+    const declarations: Declaration[] = ["HYPE", "WARN", "SILENT"];
+
+    if (phase === "SETUP") {
+      setTimeout(() => {
+        if (this.state.phase !== "SETUP") return;
+        for (const bot of bots()) {
+          if (this.state.companies[bot.id]) continue;
+          const s = sectorList[Math.floor(Math.random() * sectorList.length)];
+          this.handleSetup(bot.id, s, `${bot.nickname} 사`, 0);
+        }
+      }, 1200);
+    } else if (phase === "INFO" || phase === "SETTLE") {
+      setTimeout(() => {
+        if (this.state.phase !== phase) return;
+        for (const bot of bots()) {
+          if (!bot.ready) this.handleReady(bot.id);
+        }
+      }, 1500);
+    } else if (phase === "POSITION") {
+      setTimeout(() => {
+        if (this.state.phase !== "POSITION") return;
+        for (const bot of bots()) {
+          if (bot.ready) continue;
+          // 봇은 빈 포지션으로 관망 (단순/안전).
+          this.handleSubmitPosition(bot.id, []);
+        }
+      }, 1800);
+    } else if (phase === "DECLARE") {
+      setTimeout(() => {
+        if (this.state.phase !== "DECLARE") return;
+        for (const bot of bots()) {
+          if (bot.ready) continue;
+          const d =
+            declarations[Math.floor(Math.random() * declarations.length)];
+          this.handleDeclare(bot.id, d);
+        }
+      }, 1500);
+    } else if (phase === "TRADE") {
+      // 거래 페이즈 동안 봇이 산발적으로 매매. 5번 시도.
+      const ms = BALANCE.tradeWindowSec * 1000;
+      for (let i = 0; i < 5; i++) {
+        const delay = 2500 + (i * ms) / 6;
+        setTimeout(() => {
+          if (this.state.phase !== "TRADE") return;
+          for (const bot of bots()) {
+            // 회차당 40% 확률로만 행동.
+            if (Math.random() > 0.4) continue;
+            const otherCids = Object.keys(this.state.companies).filter(
+              (cid) => cid !== bot.id
+            );
+            if (otherCids.length === 0) continue;
+            const target =
+              otherCids[Math.floor(Math.random() * otherCids.length)];
+            const held = bot.holdings[target] ?? 0;
+            // 보유 없으면 매수, 있으면 50% 확률로 매도/매수.
+            const buy = held === 0 || Math.random() < 0.6;
+            const shares = buy ? BALANCE.liveTradeStep : -BALANCE.liveTradeStep;
+            this.handleTrade(bot.id, target, shares);
+          }
+        }, delay);
+      }
+    }
   }
 
   private resetRoundScopedFields() {

@@ -26,9 +26,11 @@ export const BALANCE = {
   meanReversionWeight: 0.5, // 과열 섹터 역풍 가중
 };
 
-// 게임 규칙 상수 (SPEC 1장)
+// 게임 규칙 상수 (SPEC 1장).
+// minPlayers는 1까지 허용 (테스트용 봇으로 인원 채우기 가능 - SPEC 1.0.5).
+// 실제 멀티 플레이 권장은 여전히 3명 이상.
 export const ROOM = {
-  minPlayers: 3,
+  minPlayers: 1,
   maxPlayers: 6,
   defaultMaxRounds: 8,
 };
