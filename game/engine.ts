@@ -96,7 +96,7 @@ export class GameRoom {
         this.handleStart(id);
         break;
       case "setup":
-        this.handleSetup(id, msg.sector, msg.name);
+        this.handleSetup(id, msg.sector, msg.name, msg.seedInvested);
         break;
       case "ready":
         this.handleReady(id);
@@ -124,6 +124,7 @@ export class GameRoom {
       cash: 0,
       holdings: {},
       ready: false,
+      seedInvested: 0,
       connected: true,
     };
     this.state.players.push(player);
@@ -148,18 +149,31 @@ export class GameRoom {
       p.declaration = undefined;
       p.privateInfo = undefined;
       p.pendingPosition = undefined;
+      p.seedInvested = 0;
     }
     this.state.round = 0;
     this.state.log.push({ round: 0, text: "게임 시작 — 사업 설립" });
     this.enterPhase("SETUP");
   }
 
-  // SETUP: 카테고리 선택 + 회사명으로 자기 사업 설립. 시작 시총은 전원 동일.
-  private handleSetup(id: string, sector: Sector, name: string) {
+  // SETUP: 카테고리 + 회사명 + 창업 출자(seedInvested).
+  // 시작 시총은 전원 동일(price × shares). 출자는 시총이 아니라 정산 시 성장 보너스로 환원된다.
+  private handleSetup(
+    id: string,
+    sector: Sector,
+    name: string,
+    seedInvested: number
+  ) {
     if (this.state.phase !== "SETUP") return;
     const player = this.state.players.find((p) => p.id === id);
     if (!player) return;
     if (!SECTORS.includes(sector)) return;
+
+    // 출자 금액: 0 ~ seedInvestedMax 사이로 정수 클램프.
+    const seed = Math.max(
+      0,
+      Math.min(BALANCE.seedInvestedMax, Math.floor(Number(seedInvested) || 0))
+    );
 
     const cleanName = name.trim().slice(0, 20) || `${player.nickname} 사`;
     this.state.companies[id] = {
@@ -171,6 +185,9 @@ export class GameRoom {
       trust: BALANCE.startingTrust,
       sharesOutstanding: SHARES_OUTSTANDING,
     };
+    // 시작 자본에서 출자분만큼 차감(회차 1 시작 시 현금에 반영).
+    player.cash = BALANCE.startingCash - seed;
+    player.seedInvested = seed;
     player.ready = true; // 설립 완료 = 준비 완료
 
     if (!this.tryAdvanceOnReady()) this.broadcastSnapshot();

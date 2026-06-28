@@ -66,6 +66,9 @@ export interface PlayerState {
   declaration?: Declaration;
   // 공개: 이번 페이즈 입력 완료 신호(서버 조기 전환 판단용). 매 페이즈 진입 시 false.
   ready: boolean;
+  // 공개: 게임 시작 시 자기 회사에 박은 창업 출자 금액(0 ~ BALANCE.seedInvestedMax).
+  // 매 회차 정산에서 자기 회사 주가에 추가 성장률을 부여한다.
+  seedInvested: number;
   connected: boolean;
 }
 
@@ -89,7 +92,8 @@ export interface GameState {
 export type ClientMessage =
   | { type: "join"; nickname: string }
   | { type: "start" } // 호스트만: LOBBY → SETUP(사업 설립)
-  | { type: "setup"; sector: Sector; name: string } // 사업 설립: 카테고리 + 회사명
+  // 사업 설립: 카테고리 + 회사명 + 창업 출자(0 ~ BALANCE.seedInvestedMax)
+  | { type: "setup"; sector: Sector; name: string; seedInvested: number }
   | { type: "ready" }; // 현재 페이즈 입력 완료 신호 (TRADE 제외 조기 전환용)
 
 // 회차 내 페이즈 진행 순서 — SPEC 2장 고정. 절대 건너뛰지 않는다.

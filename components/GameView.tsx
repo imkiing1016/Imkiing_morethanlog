@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { useGameStore } from "@/lib/store";
 import { SECTORS, SECTOR_LABELS } from "@/game/types";
 import type { ClientMessage, Phase, Sector } from "@/game/types";
+import { BALANCE } from "@/game/balance";
+
+const fmt = (n: number) => n.toLocaleString("ko-KR") + "원";
 
 // M2 임시 화면: 5페이즈 상태머신 + 사업 설립(SETUP) 검증용 최소 UI. 진짜 화면은 M4.
 // 서버가 내려준 phase/round/log/phaseDeadline 을 그릴 뿐, 전환은 서버가 결정.
@@ -44,6 +47,8 @@ export default function GameView({
   // 사업 설립 입력(클라 로컬).
   const [sector, setSector] = useState<Sector | null>(null);
   const [bizName, setBizName] = useState("");
+  // 창업 출자(만원 단위 슬라이더 → 원 단위 값). 기본 0.
+  const [seedManwon, setSeedManwon] = useState(0);
 
   // 거래 페이즈 카운트다운 표시용(렌더 전용, 게임 계산 아님).
   const [now, setNow] = useState(() => Date.now());
@@ -129,10 +134,46 @@ export default function GameView({
             />
           </div>
 
+          <div className="flex flex-col gap-2">
+            <div className="flex items-baseline justify-between">
+              <label htmlFor="seed" className="text-sm text-neutral">
+                창업 출자
+              </label>
+              <span className="text-sm tabular-nums">
+                {fmt(seedManwon * 10_000)}
+                <span className="text-neutral">
+                  {" "}
+                  / {fmt(BALANCE.seedInvestedMax)}
+                </span>
+              </span>
+            </div>
+            <input
+              id="seed"
+              type="range"
+              min={0}
+              max={BALANCE.seedInvestedMax / 10_000}
+              step={10}
+              value={seedManwon}
+              onChange={(e) => setSeedManwon(Number(e.target.value))}
+              className="accent-warning"
+            />
+            <p className="text-xs text-neutral">
+              내 회사에 박는 자본. 매 회차 정산 시 주가에 최대 +
+              {(BALANCE.seedGrowthMax * 100).toFixed(1)}% 추가 성장 보너스(출자
+              비율만큼).
+            </p>
+          </div>
+
           <button
             disabled={!canSubmitSetup}
             onClick={() =>
-              sector && send({ type: "setup", sector, name: bizName.trim() })
+              sector &&
+              send({
+                type: "setup",
+                sector,
+                name: bizName.trim(),
+                seedInvested: seedManwon * 10_000,
+              })
             }
             className="rounded-element bg-warning px-4 py-3 font-medium text-ink disabled:opacity-40"
           >

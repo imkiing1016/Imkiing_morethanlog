@@ -39,7 +39,11 @@
 - 호스트가 시작하면 로비 → **SETUP** 페이즈로 간다. 각 플레이어는 자기 사업을 만든다:
   - **카테고리 1개 선택** (6종): `IT_GAME(IT/게임)`, `BEAUTY(뷰티)`, `CONSTRUCTION(건설)`, `RETAIL(유통)`, `BIO(바이오)`, `DEFENSE(방산)`
   - **회사명 직접 입력** (최대 20자)
+  - **창업 출자(seedInvested)**: 0 ~ 시작 자본의 30% 사이로 자기 회사에 자본을 박는다(슬라이더/스테퍼).
 - 모든 플레이어의 **시작 시총은 동일**하다: `startingPrice × sharesOutstanding`(전원 같은 값). 시작 신뢰도/기술 레벨도 동일.
+- **창업 출자 효과(왜 매 회차 시총이 벌어지나)**: 출자한 금액은 회차 1부터 매 정산 시 자기 회사 주가에 **추가 성장률**을 적용한다.
+  - 성장 보너스 = `seedGrowthMax * (seedInvested / seedInvestedMax)` (회차당)
+  - 결과적으로 풀출자한 플레이어는 끝판까지 시총이 점진적으로 벌어진다(부분 출자는 그 비율로). 시총이 아니라 **성장률에 보상**을 줘서 시작 공정성과 자본 선택의 의미를 둘 다 살린다.
 - 카테고리 중복 허용(서로 다른 플레이어가 같은 카테고리 가능).
 - 연결된 전원이 사업 설립을 마치면 1회차 정보 페이즈로 넘어간다.
 
@@ -168,6 +172,9 @@ interface PlayerState {
   declaration?: Declaration;
   // 공개: 이번 페이즈 입력 완료 신호(서버의 조기 전환 판단용). 매 페이즈 진입 시 false.
   ready: boolean;
+  // 공개: 게임 시작 시 자기 회사에 박은 창업 출자 금액(0 ~ seedInvestedMax).
+  // 매 회차 정산에서 자기 회사 주가에 추가 성장률을 부여한다.
+  seedInvested: number;
   connected: boolean;
 }
 
@@ -237,15 +244,17 @@ interface GameState {
 
 ```ts
 export const BALANCE = {
-  startingCash: 8000,
-  startingPrice: 1000,
+  startingCash: 10_000_000,         // 시작 자본 1,000만원
+  startingPrice: 10_000,            // 시작 주가
   startingTrust: 3,
   startingTech: 1,
-  maxSelfOwnership: 0.60,   // 자기 회사 지분 상한
+  seedInvestedMax: 3_000_000,       // 창업 출자 상한 = 시작 자본의 30%
+  seedGrowthMax: 0.015,             // 풀출자 시 회차당 추가 성장률 +1.5%
+  maxSelfOwnership: 0.60,           // 자기 회사 지분 상한
   trustInfluence: (t: number) => 0.4 + 0.12 * t,
   eventMagnitudeRange: [0.15, 0.40] as const, // 강도 랜덤 범위
   tradeWindowSec: 45,
-  techUpgradeCost: (lvl: number) => 1000 * lvl,
+  techUpgradeCost: (lvl: number) => 1_000_000 * lvl,
   pivotCostRate: 0.30,
   exitMinPriceRate: (t: number) => 0.8 + 0.08 * t,
   meanReversionWeight: 0.5, // 과열 섹터 역풍 가중
