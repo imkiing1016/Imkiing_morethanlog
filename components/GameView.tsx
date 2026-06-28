@@ -61,6 +61,9 @@ export default function GameView({
 
   const self = state.players.find((p) => p.id === selfId);
   const isSetup = state.phase === "SETUP";
+  const isInfo = state.phase === "INFO";
+  const isDeclare = state.phase === "DECLARE";
+  const isSettle = state.phase === "SETTLE";
   const isTrade = state.phase === "TRADE";
   const isEnded = state.phase === "ENDED";
   const connected = state.players.filter((p) => p.connected);
@@ -201,11 +204,68 @@ export default function GameView({
         <section className="flex flex-col gap-2 rounded-card border border-success/30 p-4">
           <p className="font-medium text-success">거래 진행 중</p>
           <p className="text-sm text-neutral">
-            제한시간이 끝나면 서버가 자동으로 정산 페이즈로 넘어갑니다. (실제 호가는 M3)
+            제한시간이 끝나면 서버가 자동으로 정산 페이즈로 넘어갑니다. (실시간 호가는 다음 단계)
+          </p>
+        </section>
+      ) : isDeclare ? (
+        <section className="flex flex-col gap-3">
+          <p className="text-sm text-neutral">
+            전망 카드 1장을 공개로 낸다 (진실 의무 없음)
+          </p>
+          {(["HYPE", "WARN", "SILENT"] as const).map((d) => {
+            const labels = {
+              HYPE: { title: "HYPE · 떡상 예고", desc: "호재 예고 → 따라사기 유도", color: "text-success" },
+              WARN: { title: "WARN · 위기 경고", desc: "악재 예고 → 던지게 유도", color: "text-danger" },
+              SILENT: { title: "SILENT · 침묵", desc: "신뢰도 변동 없음", color: "text-neutral" },
+            }[d];
+            const selected = self?.declaration === d;
+            return (
+              <button
+                key={d}
+                onClick={() => send({ type: "declare", declaration: d })}
+                className={`rounded-element border px-3 py-3 text-left ${
+                  selected
+                    ? "border-warning bg-warning/10"
+                    : "border-neutral/30"
+                }`}
+              >
+                <div className={`font-medium ${labels.color}`}>{labels.title}</div>
+                <div className="text-xs text-neutral">{labels.desc}</div>
+              </button>
+            );
+          })}
+          <p className="text-xs text-neutral">
+            선언 완료 {readyCount} / {connected.length}
           </p>
         </section>
       ) : (
         <section className="flex flex-col gap-3">
+          {isInfo && self?.privateInfo && (
+            <div className="rounded-card border border-danger/30 bg-danger/5 p-4">
+              <p className="text-xs text-neutral">다음 회차 · 내 섹터 정보 (비공개)</p>
+              <p
+                className={`text-2xl font-medium ${
+                  self.privateInfo === "BULLISH" ? "text-success" : "text-danger"
+                }`}
+              >
+                {self.privateInfo === "BULLISH"
+                  ? "호재 ▲ 상승 예고"
+                  : "악재 ▼ 하락 예고"}
+              </p>
+              <p className="text-xs text-neutral">
+                강도는 비공개 · 이 정보는 나만 봅니다
+              </p>
+            </div>
+          )}
+          {isSettle && myCompany && (
+            <div className="rounded-card border border-info/30 bg-info/5 p-4">
+              <p className="text-xs text-neutral">정산 결과 · 내 회사</p>
+              <p className="text-lg font-medium">
+                {myCompany.name} · {fmt(myCompany.price)}
+              </p>
+              <p className="text-xs text-neutral">신뢰도 ★ {myCompany.trust}</p>
+            </div>
+          )}
           <p className="text-sm text-neutral">
             준비 완료 {readyCount} / {connected.length}
           </p>
@@ -243,16 +303,34 @@ export default function GameView({
                     </span>
                   )}
                 </span>
-                <span className="text-neutral">
-                  {!p.connected
-                    ? "연결 끊김"
-                    : isTrade
-                      ? "거래 중"
-                      : p.ready
-                        ? isSetup
-                          ? "설립됨"
-                          : "준비됨"
-                        : "대기"}
+                <span className="text-neutral text-xs flex items-center gap-2">
+                  {co && !isSetup && (
+                    <span className="tabular-nums">{fmt(co.price)}</span>
+                  )}
+                  {(isDeclare || isSettle || isTrade) && p.declaration && (
+                    <span
+                      className={
+                        p.declaration === "HYPE"
+                          ? "text-success"
+                          : p.declaration === "WARN"
+                            ? "text-danger"
+                            : "text-neutral"
+                      }
+                    >
+                      {p.declaration}
+                    </span>
+                  )}
+                  <span>
+                    {!p.connected
+                      ? "연결 끊김"
+                      : isTrade
+                        ? "거래 중"
+                        : p.ready
+                          ? isSetup
+                            ? "설립됨"
+                            : "준비됨"
+                          : "대기"}
+                  </span>
                 </span>
               </li>
             );

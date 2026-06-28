@@ -94,6 +94,8 @@ export type ClientMessage =
   | { type: "start" } // 호스트만: LOBBY → SETUP(사업 설립)
   // 사업 설립: 카테고리 + 회사명 + 창업 출자(0 ~ BALANCE.seedInvestedMax)
   | { type: "setup"; sector: Sector; name: string; seedInvested: number }
+  // 선언 페이즈: HYPE/WARN/SILENT 1장 (보내면 자동으로 ready 처리)
+  | { type: "declare"; declaration: Declaration }
   | { type: "ready" }; // 현재 페이즈 입력 완료 신호 (TRADE 제외 조기 전환용)
 
 // 회차 내 페이즈 진행 순서 — SPEC 2장 고정. 절대 건너뛰지 않는다.

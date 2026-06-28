@@ -2,6 +2,7 @@ import { BALANCE, ROOM } from "./balance";
 import { ROUND_PHASES, SECTORS } from "./types";
 import type {
   ClientMessage,
+  Declaration,
   GameState,
   Phase,
   PlayerState,
@@ -98,10 +99,30 @@ export class GameRoom {
       case "setup":
         this.handleSetup(id, msg.sector, msg.name, msg.seedInvested);
         break;
+      case "declare":
+        this.handleDeclare(id, msg.declaration);
+        break;
       case "ready":
         this.handleReady(id);
         break;
     }
+  }
+
+  // SPEC 2장 ③: HYPE/WARN/SILENT 1장 선언 + 준비 처리.
+  private handleDeclare(id: string, declaration: Declaration) {
+    if (this.state.phase !== "DECLARE") return;
+    const player = this.state.players.find((p) => p.id === id);
+    if (!player) return;
+    if (
+      declaration !== "HYPE" &&
+      declaration !== "WARN" &&
+      declaration !== "SILENT"
+    ) {
+      return;
+    }
+    player.declaration = declaration;
+    player.ready = true;
+    if (!this.tryAdvanceOnReady()) this.broadcastSnapshot();
   }
 
   // --- 입력 처리 ---
@@ -253,6 +274,9 @@ export class GameRoom {
     this.state.phase = phase;
     for (const p of this.state.players) p.ready = false;
 
+    if (phase === "INFO") this.onEnterInfo();
+    if (phase === "SETTLE") this.onEnterSettle();
+
     if (phase === "TRADE") {
       const ms = BALANCE.tradeWindowSec * 1000;
       this.state.phaseDeadline = Date.now() + ms;
@@ -263,6 +287,60 @@ export class GameRoom {
 
     this.state.log.push({ round: this.state.round, text: PHASE_LOG[phase] });
     this.broadcastSnapshot();
+  }
+
+  // SPEC 2장 ①: 각자에게 자기 섹터 다음 이벤트 방향만 비공개로 지급. 강도는 SETTLE에서 결정.
+  private onEnterInfo() {
+    for (const p of this.state.players) {
+      p.privateInfo = Math.random() < 0.5 ? "BULLISH" : "BEARISH";
+      p.declaration = undefined;
+    }
+  }
+
+  // SPEC 2장 ⑤ + 1.1: 이벤트 발동(주가 ±), 창업 출자 성장 보너스, 신뢰도 ±1.
+  // 매매·포지션 체결은 후반부(M3b)에서 추가.
+  private onEnterSettle() {
+    for (const p of this.state.players) {
+      const co = this.state.companies[p.id];
+      if (!co) continue;
+
+      // 이벤트 강도 랜덤. 방향은 본인 privateInfo.
+      const [lo, hi] = BALANCE.eventMagnitudeRange;
+      const mag = lo + Math.random() * (hi - lo);
+      const dir = p.privateInfo ?? "BULLISH";
+      const eventDelta = dir === "BULLISH" ? mag : -mag;
+
+      // 창업 출자 성장 보너스: 풀출자(seedInvestedMax)면 +seedGrowthMax, 비례.
+      const seedRatio =
+        BALANCE.seedInvestedMax > 0
+          ? Math.min(1, p.seedInvested / BALANCE.seedInvestedMax)
+          : 0;
+      const seedBonus = BALANCE.seedGrowthMax * seedRatio;
+
+      const prevPrice = co.price;
+      // 합성 변동: 이벤트 + 성장보너스(둘 다 비율). 합쳐서 곱.
+      co.price = Math.max(
+        1,
+        Math.round(prevPrice * (1 + eventDelta + seedBonus))
+      );
+
+      // 신뢰도 ±1: 선언 == 실제 → +1, SILENT는 변동 없음, 다르면 −1.
+      let trustDelta = 0;
+      if (p.declaration === "SILENT") trustDelta = 0;
+      else if (p.declaration === "HYPE")
+        trustDelta = dir === "BULLISH" ? 1 : -1;
+      else if (p.declaration === "WARN")
+        trustDelta = dir === "BEARISH" ? 1 : -1;
+      co.trust = Math.max(0, Math.min(5, co.trust + trustDelta));
+
+      // 사람이 읽는 한 줄 로그.
+      const pct = ((co.price / prevPrice - 1) * 100).toFixed(1);
+      const dirLabel = dir === "BULLISH" ? "호재" : "악재";
+      this.state.log.push({
+        round: this.state.round,
+        text: `${co.name}: ${dirLabel} ${pct}% (신뢰도 ${trustDelta >= 0 ? "+" : ""}${trustDelta})`,
+      });
+    }
   }
 
   private onTradeTimeout() {
