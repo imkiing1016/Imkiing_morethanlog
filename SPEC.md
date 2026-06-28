@@ -137,6 +137,8 @@
 - 매 회차 정산 시 **섹터별 글로벌 이벤트** 1개 발동(개인 정보 이벤트와 별개의 시장 전체 이벤트).
 - 효과: 특정 섹터 전체에 +/- (예: "바이오 R&D 보조금 확대 → 바이오 +35%").
 - 평균회귀 요소 포함: 직전 회차 과열 섹터에 역풍 이벤트 가중치 ↑ → 선두 독주 방지.
+- 타이밍: **INFO 진입 시** 다음 정산에 적용될 글로벌 이벤트를 결정하고 **모든 플레이어에게 헤드라인 공개**(`state.pendingGlobalEvent`). 정산 시 실제 적용 후 소비.
+- 평균회귀 알고리즘: `state.lastHotSector` (직전 정산에서 누적 변동률이 가장 큰 섹터)에는 **반대 방향 이벤트가 두 배 가중치**.
 
 ### 3.6.5 연구 성공 (Research Breakthrough) — 창업 출자에 매달린 잭팟
 - 매 회차 정산에서 회사마다 낮은 확률로 **연구 성공**이 발생할 수 있다 → **극호재**로 주가에 큰 폭의 보너스(+`researchBoost%`)가 더해진다.
@@ -273,6 +275,7 @@ export const BALANCE = {
   priceImpactCoef: 0.2,             // 거래량 → 주가 임팩트 계수
                                      // 주가변동률 = priceImpactCoef × (체결주식/sharesOutstanding)
   liveTradeStep: 10,                // TRADE 페이즈 +/- 버튼 한 클릭당 거래 단위
+  globalEventMagnitudeRange: [0.10, 0.25] as const, // 글로벌 이벤트 강도(10~25%)
   maxSelfOwnership: 0.60,           // 자기 회사 지분 상한
   trustInfluence: (t: number) => 0.4 + 0.12 * t,
   eventMagnitudeRange: [0.15, 0.40] as const, // 강도 랜덤 범위

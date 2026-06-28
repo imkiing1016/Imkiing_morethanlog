@@ -2,8 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-/* SPEC 5장: 플랫 디자인. 그라데이션/그림자 금지(포커스 링 제외).
-   모바일 우선(약 380px). 문장은 sentence case. */
+/* 캐주얼 동물 컨셉. 모바일 우선(약 380px).
+   따뜻한 크림 배경 + 둥근 카드 + 친근한 버튼. */
 :root {
   color-scheme: light;
 }
@@ -12,8 +12,16 @@ html,
 body {
   background-color: theme("colors.paper");
   color: theme("colors.ink");
-  font-weight: 400;
+  font-weight: 500;
   -webkit-font-smoothing: antialiased;
+  font-family:
+    "SF Pro Rounded",
+    "SF Pro Text",
+    -apple-system,
+    "Segoe UI Rounded",
+    "Segoe UI",
+    system-ui,
+    sans-serif;
 }
 
 body {
@@ -21,4 +29,10 @@ body {
   max-width: 480px;
   min-height: 100vh;
   padding: 16px;
+}
+
+/* 동물 마스코트 이모지 크게. */
+.mascot {
+  font-size: 28px;
+  line-height: 1;
 }

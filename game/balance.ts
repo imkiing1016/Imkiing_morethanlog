@@ -15,6 +15,7 @@ export const BALANCE = {
   infoBuyMax: 2, // 회차당 본인 외 추가로 살 수 있는 정보 건수
   priceImpactCoef: 0.2, // 거래량 → 주가 임팩트 계수 (SPEC 2장 ④)
   liveTradeStep: 10, // TRADE +/- 버튼 한 번에 거래되는 주식 수
+  globalEventMagnitudeRange: [0.1, 0.25] as const, // 글로벌 이벤트 강도 (SPEC 3.6)
   maxSelfOwnership: 0.6, // 자기 회사 지분 상한
   trustInfluence: (t: number) => 0.4 + 0.12 * t,
   eventMagnitudeRange: [0.15, 0.4] as const, // 강도 랜덤 범위

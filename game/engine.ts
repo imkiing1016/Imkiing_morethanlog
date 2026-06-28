@@ -18,6 +18,39 @@ export interface Conn {
 
 const SHARES_OUTSTANDING = 1000; // 전원 동일 → 시작 시총 동일 (price × shares)
 
+// 글로벌 이벤트 헤드라인 (섹터 × 방향). SPEC 3.6 — 시장 전체 뉴스.
+const HEADLINES: Record<Sector, { up: string[]; down: string[] }> = {
+  IT_GAME: {
+    up: ["AI 붐 — IT/게임 호조", "신작 흥행 — IT/게임 강세"],
+    down: ["사이버 공격 — IT/게임 충격", "규제 강화 — IT/게임 침체"],
+  },
+  BEAUTY: {
+    up: ["K뷰티 글로벌 인기 — 뷰티 호조", "한류 효과 — 뷰티 강세"],
+    down: ["원료비 급등 — 뷰티 부진", "수출 둔화 — 뷰티 약세"],
+  },
+  CONSTRUCTION: {
+    up: ["인프라 부양 — 건설 호조", "주택 공급 확대 — 건설 강세"],
+    down: ["철근 가격 급락 — 건설 부진", "분양 미달 — 건설 약세"],
+  },
+  RETAIL: {
+    up: ["소비 회복 — 유통 호조", "온라인 쇼핑 폭증 — 유통 강세"],
+    down: ["물류 대란 — 유통 부진", "소비 위축 — 유통 약세"],
+  },
+  BIO: {
+    up: ["신약 승인 — 바이오 호조", "R&D 보조금 확대 — 바이오 강세"],
+    down: ["임상 실패 — 바이오 부진", "감염병 잠잠 — 바이오 약세"],
+  },
+  DEFENSE: {
+    up: ["방산 수출 호조 — 방산 강세", "안보 긴장 고조 — 방산 호조"],
+    down: ["방산 예산 삭감 — 방산 부진", "평화 협정 — 방산 약세"],
+  },
+};
+
+function pickHeadline(sector: Sector, isUp: boolean): string {
+  const list = HEADLINES[sector][isUp ? "up" : "down"];
+  return list[Math.floor(Math.random() * list.length)];
+}
+
 // 거래량 → 주가 임팩트. shares > 0 은 매수(상승), < 0 은 매도(하락).
 // 변동률 = priceImpactCoef × (체결주식 / sharesOutstanding)
 function applyImpact(
@@ -423,12 +456,60 @@ export class GameRoom {
   }
 
   // SPEC 2장 ①: 각자에게 자기 섹터 다음 이벤트 방향만 비공개로 지급. 강도는 SETTLE에서 결정.
+  // 동시에 SPEC 3.6 글로벌 이벤트도 결정해 모두에게 공개(헤드라인). 적용은 SETTLE에서.
   private onEnterInfo() {
     for (const p of this.state.players) {
       p.privateInfo = Math.random() < 0.5 ? "BULLISH" : "BEARISH";
       p.declaration = undefined;
       p.purchasedInfos = [];
     }
+    this.rollGlobalEvent();
+  }
+
+  // 평균회귀: 직전 회차 과열 섹터에 역풍 가중치 2배.
+  private rollGlobalEvent() {
+    const [lo, hi] = BALANCE.globalEventMagnitudeRange;
+    const mag = lo + Math.random() * (hi - lo);
+
+    // 섹터 가중치 테이블: 기본 1, 직전 핫 섹터는 역풍(반대 방향) 가중치 2.
+    // 단순화를 위해 섹터를 먼저 뽑고, 그 섹터의 방향을 직전 핫 섹터에 대해서만 역풍으로.
+    const sectors: Sector[] = [
+      "IT_GAME",
+      "BEAUTY",
+      "CONSTRUCTION",
+      "RETAIL",
+      "BIO",
+      "DEFENSE",
+    ];
+    const weights = sectors.map((s) =>
+      this.state.lastHotSector && s === this.state.lastHotSector ? 2 : 1
+    );
+    const totalW = weights.reduce((a, b) => a + b, 0);
+    let r = Math.random() * totalW;
+    let chosen: Sector = sectors[0];
+    for (let i = 0; i < sectors.length; i++) {
+      r -= weights[i];
+      if (r <= 0) {
+        chosen = sectors[i];
+        break;
+      }
+    }
+
+    // 방향: 핫 섹터면 BEARISH(역풍) 우세, 아니면 50:50.
+    const isUp =
+      chosen === this.state.lastHotSector
+        ? Math.random() < 0.3
+        : Math.random() < 0.5;
+    const signedMag = isUp ? mag : -mag;
+    this.state.pendingGlobalEvent = {
+      sector: chosen,
+      magnitude: signedMag,
+      headline: pickHeadline(chosen, isUp),
+    };
+    this.state.log.push({
+      round: this.state.round,
+      text: `🌐 [예고] ${this.state.pendingGlobalEvent.headline}`,
+    });
   }
 
   // SPEC 2장 ④ 진입: POSITION 의 비공개 주문들을 일괄 체결한다.
@@ -471,10 +552,31 @@ export class GameRoom {
     }
   }
 
-  // SPEC 2장 ⑤ + 1.1 + 3.7: 이벤트 발동(주가 ±), 창업 출자 성장 보너스,
-  // 신뢰도 ±1, 거짓 누적 → 세무 조사 발동.
-  // 매매·포지션 체결은 후반부(M3b)에서 추가.
+  // SPEC 2장 ⑤ + 1.1 + 3.6 + 3.7: 글로벌 이벤트 + 개인 이벤트 + 성장 보너스 +
+  // 신뢰도 ±1 + 세무 조사 + 연구 잭팟. 매매는 TRADE 에서 이미 끝남.
   private onEnterSettle() {
+    // 1) 글로벌 이벤트: 대상 섹터의 모든 회사 주가에 일괄 ±
+    const ge = this.state.pendingGlobalEvent;
+    const startPrices: Record<string, number> = {};
+    for (const co of Object.values(this.state.companies)) {
+      startPrices[co.ownerId] = co.price;
+    }
+    if (ge) {
+      for (const co of Object.values(this.state.companies)) {
+        if (co.sector === ge.sector) {
+          co.price = Math.max(
+            1,
+            Math.round(co.price * (1 + ge.magnitude))
+          );
+        }
+      }
+      this.state.log.push({
+        round: this.state.round,
+        text: `🌐 ${ge.headline} ${(ge.magnitude * 100).toFixed(1)}%`,
+      });
+    }
+
+    // 2) 개인 이벤트 + 신뢰도 + 감사 + 연구 (회사별 루프)
     for (const p of this.state.players) {
       const co = this.state.companies[p.id];
       if (!co) continue;
@@ -566,6 +668,26 @@ export class GameRoom {
         });
       }
     }
+
+    // 3) 평균회귀 추적: 이번 회차 가장 가격 변동률(섹터 합)이 큰 섹터를 hot 으로 기록.
+    const sectorChange = new Map<Sector, number>();
+    for (const co of Object.values(this.state.companies)) {
+      const start = startPrices[co.ownerId] ?? co.price;
+      const rate = start > 0 ? (co.price - start) / start : 0;
+      sectorChange.set(co.sector, (sectorChange.get(co.sector) ?? 0) + rate);
+    }
+    let hot: Sector | undefined;
+    let hotAbs = 0;
+    for (const [s, change] of sectorChange.entries()) {
+      if (Math.abs(change) > hotAbs) {
+        hotAbs = Math.abs(change);
+        hot = s;
+      }
+    }
+    this.state.lastHotSector = hot;
+
+    // 4) 글로벌 이벤트 소비
+    this.state.pendingGlobalEvent = undefined;
   }
 
   private onTradeTimeout() {

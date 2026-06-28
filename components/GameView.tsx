@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/lib/store";
-import { SECTORS, SECTOR_LABELS } from "@/game/types";
+import { SECTORS, SECTOR_LABELS, SECTOR_MASCOTS } from "@/game/types";
 import type { ClientMessage, Phase, Sector } from "@/game/types";
 import { BALANCE } from "@/game/balance";
 
@@ -90,23 +90,72 @@ export default function GameView({
 
   return (
     <main className="flex flex-col gap-6 pt-8">
-      <header className="flex items-center justify-between">
-        <div className="flex flex-col gap-1">
+      <header className="rounded-card border-2 border-cardEdge bg-card p-3 flex items-center justify-between">
+        <div className="flex flex-col gap-0.5">
           {state.round >= 1 && (
-            <p className="text-sm text-neutral">
+            <p className="text-xs text-neutral">
               회차 {state.round} / {state.maxRounds}
             </p>
           )}
-          <p className={`text-2xl font-medium ${PHASE_ACCENT[state.phase]}`}>
-            {PHASE_LABEL[state.phase]} 페이즈
+          <p className={`text-xl font-medium ${PHASE_ACCENT[state.phase]}`}>
+            🐾 {PHASE_LABEL[state.phase]}
           </p>
         </div>
         {secondsLeft !== null && (
-          <span className="text-2xl font-medium text-success tabular-nums">
-            {secondsLeft}s
+          <span className="rounded-element bg-accentSoft border-2 border-cardEdge px-3 py-1.5 text-xl font-medium text-warning tabular-nums">
+            ⏱ {secondsLeft}s
           </span>
         )}
       </header>
+
+      {state.pendingGlobalEvent && (
+        <div
+          className={`rounded-card border-2 border-cardEdge p-3 ${
+            state.pendingGlobalEvent.magnitude > 0
+              ? "bg-success/10"
+              : "bg-danger/10"
+          }`}
+        >
+          <p className="text-xs text-neutral">시장 뉴스</p>
+          <p className="font-medium">
+            🌐 {state.pendingGlobalEvent.headline}
+            <span
+              className={`ml-2 tabular-nums ${
+                state.pendingGlobalEvent.magnitude > 0
+                  ? "text-success"
+                  : "text-danger"
+              }`}
+            >
+              {state.pendingGlobalEvent.magnitude > 0 ? "+" : ""}
+              {(state.pendingGlobalEvent.magnitude * 100).toFixed(1)}%
+            </span>
+          </p>
+        </div>
+      )}
+
+      {state.round >= 1 && self && (
+        <div className="rounded-card border-2 border-cardEdge bg-card p-3 flex justify-between text-sm">
+          <div>
+            <p className="text-xs text-neutral">현금</p>
+            <p className="font-medium tabular-nums">{fmt(self.cash)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-neutral">내 회사</p>
+            <p className="font-medium">
+              {myCompany ? (
+                <>
+                  <span className="mascot mr-1">
+                    {SECTOR_MASCOTS[myCompany.sector]}
+                  </span>
+                  {fmt(myCompany.price)}
+                </>
+              ) : (
+                "—"
+              )}
+            </p>
+          </div>
+        </div>
+      )}
 
       {isSetup ? (
         <section className="flex flex-col gap-4">
@@ -122,12 +171,13 @@ export default function GameView({
               <button
                 key={s}
                 onClick={() => setSector(s)}
-                className={`rounded-element border px-3 py-3 text-sm font-medium ${
+                className={`rounded-card border-2 px-3 py-3 text-sm font-medium flex items-center gap-2 ${
                   sector === s
-                    ? "border-warning bg-warning/10 text-ink"
-                    : "border-neutral/30 text-ink"
+                    ? "border-warning bg-accentSoft text-ink"
+                    : "border-cardEdge bg-card text-ink"
                 }`}
               >
+                <span className="mascot">{SECTOR_MASCOTS[s]}</span>
                 {SECTOR_LABELS[s]}
               </button>
             ))}
@@ -226,26 +276,29 @@ export default function GameView({
               return (
                 <div
                   key={other.id}
-                  className="rounded-card border border-neutral/20 p-3 flex flex-col gap-2"
+                  className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2"
                 >
-                  <div className="flex justify-between items-baseline">
-                    <span className="font-medium">
-                      {co.name}
-                      <span className="ml-2 text-xs text-neutral">
-                        ({SECTOR_LABELS[co.sector]}){isMine && " · 내 회사"}
-                      </span>
-                    </span>
+                  <div className="flex items-center gap-3">
+                    <span className="mascot">{SECTOR_MASCOTS[co.sector]}</span>
+                    <div className="flex-1">
+                      <p className="font-medium">
+                        {co.name}
+                        {isMine && (
+                          <span className="ml-2 text-xs text-warning">
+                            내 회사
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-neutral">
+                        {SECTOR_LABELS[co.sector]} · ★{co.trust} ·{" "}
+                        {other.declaration ?? "—"}
+                      </p>
+                    </div>
                     <span className="tabular-nums font-medium">
                       {fmt(co.price)}
                     </span>
                   </div>
-                  <div className="flex justify-between text-xs text-neutral">
-                    <span>
-                      보유 {held}주 ({co.trust}/5★ ·{" "}
-                      {other.declaration ?? "—"})
-                    </span>
-                    <span>1주 {fmt(co.price)}</span>
-                  </div>
+                  <p className="text-xs text-neutral">보유 {held}주</p>
                   <div className="flex gap-2">
                     <button
                       onClick={() =>
@@ -255,7 +308,7 @@ export default function GameView({
                           shares: step,
                         })
                       }
-                      className="flex-1 rounded-element bg-success/10 border border-success/40 text-success px-3 py-2 font-medium text-sm"
+                      className="flex-1 rounded-element bg-success text-paper px-3 py-2.5 font-medium text-sm"
                     >
                       매수 +{step}
                     </button>
@@ -267,7 +320,7 @@ export default function GameView({
                           shares: -step,
                         })
                       }
-                      className="flex-1 rounded-element bg-danger/10 border border-danger/40 text-danger px-3 py-2 font-medium text-sm"
+                      className="flex-1 rounded-element bg-danger text-paper px-3 py-2.5 font-medium text-sm"
                     >
                       매도 −{step}
                     </button>
@@ -293,56 +346,60 @@ export default function GameView({
               return (
                 <div
                   key={other.id}
-                  className="rounded-card border border-neutral/20 p-3 flex flex-col gap-2"
+                  className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2"
                 >
-                  <div className="flex justify-between items-baseline">
-                    <span className="font-medium">
-                      {co.name}
-                      <span className="ml-2 text-xs text-neutral">
-                        ({SECTOR_LABELS[co.sector]}){isMine && " · 내 회사"}
-                      </span>
-                    </span>
+                  <div className="flex items-center gap-3">
+                    <span className="mascot">{SECTOR_MASCOTS[co.sector]}</span>
+                    <div className="flex-1">
+                      <p className="font-medium">
+                        {co.name}
+                        {isMine && (
+                          <span className="ml-2 text-xs text-warning">
+                            내 회사
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-neutral">
+                        {SECTOR_LABELS[co.sector]} · 보유{" "}
+                        {self?.holdings?.[other.id] ?? 0}주
+                      </p>
+                    </div>
                     <span className="tabular-nums">{fmt(co.price)}</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-neutral">
-                      현 보유 {self?.holdings?.[other.id] ?? 0}주
+                  <div className="flex items-center justify-end gap-3">
+                    <button
+                      onClick={() =>
+                        setPositionOrders((o) => ({
+                          ...o,
+                          [other.id]: (o[other.id] ?? 0) - 1,
+                        }))
+                      }
+                      className="w-10 h-10 rounded-element border-2 border-cardEdge bg-card text-xl font-medium"
+                    >
+                      −
+                    </button>
+                    <span
+                      className={`tabular-nums min-w-[3rem] text-center font-medium text-lg ${
+                        qty > 0
+                          ? "text-success"
+                          : qty < 0
+                            ? "text-danger"
+                            : "text-neutral"
+                      }`}
+                    >
+                      {qty > 0 ? `+${qty}` : qty}
                     </span>
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() =>
-                          setPositionOrders((o) => ({
-                            ...o,
-                            [other.id]: (o[other.id] ?? 0) - 1,
-                          }))
-                        }
-                        className="w-9 h-9 rounded-element border border-neutral/30 font-medium"
-                      >
-                        −
-                      </button>
-                      <span
-                        className={`tabular-nums min-w-[2.5rem] text-center font-medium ${
-                          qty > 0
-                            ? "text-success"
-                            : qty < 0
-                              ? "text-danger"
-                              : "text-neutral"
-                        }`}
-                      >
-                        {qty > 0 ? `+${qty}` : qty}
-                      </span>
-                      <button
-                        onClick={() =>
-                          setPositionOrders((o) => ({
-                            ...o,
-                            [other.id]: (o[other.id] ?? 0) + 1,
-                          }))
-                        }
-                        className="w-9 h-9 rounded-element border border-neutral/30 font-medium"
-                      >
-                        +
-                      </button>
-                    </div>
+                    <button
+                      onClick={() =>
+                        setPositionOrders((o) => ({
+                          ...o,
+                          [other.id]: (o[other.id] ?? 0) + 1,
+                        }))
+                      }
+                      className="w-10 h-10 rounded-element border-2 border-cardEdge bg-card text-xl font-medium"
+                    >
+                      +
+                    </button>
                   </div>
                 </div>
               );
@@ -552,18 +609,25 @@ export default function GameView({
             return (
               <li
                 key={p.id}
-                className="flex items-center justify-between rounded-element border border-neutral/20 px-3 py-2 text-sm"
+                className="flex items-center justify-between rounded-card border-2 border-cardEdge bg-card px-3 py-2 text-sm"
               >
-                <span className="font-medium">
-                  {p.nickname}
-                  {p.id === selfId && (
-                    <span className="ml-2 text-neutral">(나)</span>
-                  )}
+                <span className="font-medium flex items-center gap-2">
                   {co && (
-                    <span className="ml-2 text-neutral">
-                      · {co.name} ({SECTOR_LABELS[co.sector]})
+                    <span className="mascot text-xl">
+                      {SECTOR_MASCOTS[co.sector]}
                     </span>
                   )}
+                  <span>
+                    {p.nickname}
+                    {p.id === selfId && (
+                      <span className="ml-1 text-xs text-warning">(나)</span>
+                    )}
+                    {co && (
+                      <span className="block text-xs text-neutral">
+                        {co.name}
+                      </span>
+                    )}
+                  </span>
                 </span>
                 <span className="text-neutral text-xs flex items-center gap-2">
                   {co && !isSetup && (

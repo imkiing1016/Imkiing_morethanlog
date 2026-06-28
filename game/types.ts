@@ -29,6 +29,16 @@ export const SECTOR_LABELS: Record<Sector, string> = {
   DEFENSE: "방산",
 };
 
+// 캐주얼 동물 컨셉. 섹터마다 마스코트 동물 1마리(자리표시 이모지, 후일 픽셀아트로 교체).
+export const SECTOR_MASCOTS: Record<Sector, string> = {
+  IT_GAME: "🦊", // 영리한 여우
+  BEAUTY: "🐰", // 토끼
+  CONSTRUCTION: "🐻", // 곰
+  RETAIL: "🐱", // 고양이
+  BIO: "🐼", // 판다
+  DEFENSE: "🐺", // 늑대
+};
+
 export type Phase =
   | "LOBBY"
   | "SETUP"
@@ -88,8 +98,10 @@ export interface GameState {
   players: PlayerState[];
   companies: Record<string /*ownerId*/, Company>;
   phaseDeadline?: number; // epoch ms, 거래 페이즈 타이머
-  // 이번 회차 정산에서 적용될 글로벌 이벤트
+  // 이번 회차 정산에서 적용될 글로벌 이벤트 (INFO 진입 시 결정 → SETTLE 에 적용)
   pendingGlobalEvent?: { sector: Sector; magnitude: number; headline: string };
+  // 평균회귀용: 직전 회차에 누적 가격 변동률이 가장 컸던 섹터(과열 응징).
+  lastHotSector?: Sector;
   log: Array<{ round: number; text: string }>;
 }
 
