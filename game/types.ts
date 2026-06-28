@@ -62,6 +62,12 @@ export interface Company {
   techLevel: number; // 1~5
   trust: number; // 0~5
   sharesOutstanding: number;
+  // 가격 히스토리 (최근 N틱). 거래/정산마다 push. 캐시 한도 PRICE_HISTORY_LIMIT.
+  // 실시간 차트 표시용. 게임 로직엔 영향 없음.
+  pricePoints: number[];
+  // 이번 회차 정산 직전 스냅샷(SETTLE 화면 비교용). 매 SETTLE 진입 시 갱신.
+  prevSettlePrice?: number;
+  prevSettleTrust?: number;
   // SPEC 3.6.5 연구 성공
   researchBreakthroughThisRound: boolean; // 이번 정산에서 연구 성공(잭팟) 발동 여부
   // SPEC 3.7 세무 조사

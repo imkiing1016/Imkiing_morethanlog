@@ -5,6 +5,7 @@ import { useGameStore } from "@/lib/store";
 import { SECTORS, SECTOR_LABELS, SECTOR_MASCOTS } from "@/game/types";
 import type { ClientMessage, Phase, Sector } from "@/game/types";
 import { BALANCE } from "@/game/balance";
+import Sparkline from "./Sparkline";
 
 const fmt = (n: number) => n.toLocaleString("ko-KR") + "원";
 
@@ -273,6 +274,9 @@ export default function GameView({
               const held = self?.holdings?.[other.id] ?? 0;
               const isMine = other.id === selfId;
               const step = BALANCE.liveTradeStep;
+              const pts = co.pricePoints ?? [];
+              const start = pts[0] ?? co.price;
+              const livePct = start > 0 ? ((co.price - start) / start) * 100 : 0;
               return (
                 <div
                   key={other.id}
@@ -294,10 +298,23 @@ export default function GameView({
                         {other.declaration ?? "—"}
                       </p>
                     </div>
-                    <span className="tabular-nums font-medium">
-                      {fmt(co.price)}
-                    </span>
+                    <div className="text-right">
+                      <p className="tabular-nums font-medium">{fmt(co.price)}</p>
+                      <p
+                        className={`text-xs tabular-nums ${
+                          livePct > 0
+                            ? "text-success"
+                            : livePct < 0
+                              ? "text-danger"
+                              : "text-neutral"
+                        }`}
+                      >
+                        {livePct > 0 ? "▲" : livePct < 0 ? "▼" : "─"}{" "}
+                        {Math.abs(livePct).toFixed(1)}%
+                      </p>
+                    </div>
                   </div>
+                  <Sparkline points={pts} width={330} height={42} />
                   <p className="text-xs text-neutral">보유 {held}주</p>
                   <div className="flex gap-2">
                     <button
@@ -576,13 +593,115 @@ export default function GameView({
               </div>
             </>
           )}
-          {isSettle && myCompany && (
-            <div className="rounded-card border border-info/30 bg-info/5 p-4">
-              <p className="text-xs text-neutral">정산 결과 · 내 회사</p>
-              <p className="text-lg font-medium">
-                {myCompany.name} · {fmt(myCompany.price)}
-              </p>
-              <p className="text-xs text-neutral">신뢰도 ★ {myCompany.trust}</p>
+          {isSettle && (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-neutral">📊 회차 {state.round} 결과</p>
+              {state.players
+                .filter((other) => state.companies[other.id])
+                .map((other) => {
+                  const co = state.companies[other.id];
+                  const prev = co.prevSettlePrice ?? co.price;
+                  const prevTrust = co.prevSettleTrust ?? co.trust;
+                  const delta = co.price - prev;
+                  const pct = prev > 0 ? (delta / prev) * 100 : 0;
+                  const trustDelta = co.trust - prevTrust;
+                  const isMine = other.id === selfId;
+                  return (
+                    <div
+                      key={other.id}
+                      className={`rounded-card border-2 p-3 flex flex-col gap-2 ${
+                        isMine
+                          ? "border-warning bg-accentSoft"
+                          : "border-cardEdge bg-card"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="mascot">
+                          {SECTOR_MASCOTS[co.sector]}
+                        </span>
+                        <div className="flex-1">
+                          <p className="font-medium">
+                            {co.name}
+                            {isMine && (
+                              <span className="ml-2 text-xs text-warning">
+                                내 회사
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-xs text-neutral">
+                            {SECTOR_LABELS[co.sector]} ·{" "}
+                            {other.declaration ?? "—"}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="tabular-nums">{fmt(co.price)}</p>
+                          <p
+                            className={`text-lg font-medium tabular-nums ${
+                              pct > 0
+                                ? "text-success"
+                                : pct < 0
+                                  ? "text-danger"
+                                  : "text-neutral"
+                            }`}
+                          >
+                            {pct > 0 ? "▲" : pct < 0 ? "▼" : "─"}{" "}
+                            {Math.abs(pct).toFixed(1)}%
+                          </p>
+                        </div>
+                      </div>
+                      <Sparkline
+                        points={co.pricePoints ?? []}
+                        width={330}
+                        height={44}
+                      />
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="rounded-element bg-paper border border-cardEdge px-2 py-1">
+                          {fmt(prev)} → {fmt(co.price)}
+                        </span>
+                        {trustDelta !== 0 && (
+                          <span
+                            className={`rounded-element px-2 py-1 border ${
+                              trustDelta > 0
+                                ? "bg-success/10 border-success/30 text-success"
+                                : "bg-danger/10 border-danger/30 text-danger"
+                            }`}
+                          >
+                            ★ {trustDelta > 0 ? "+" : ""}
+                            {trustDelta} (현 {co.trust})
+                          </span>
+                        )}
+                        {co.auditedThisRound && (
+                          <span className="rounded-element bg-danger/10 border border-danger/30 text-danger px-2 py-1">
+                            🚨 세무 조사
+                          </span>
+                        )}
+                        {co.researchBreakthroughThisRound && (
+                          <span className="rounded-element bg-success/10 border border-success/30 text-success px-2 py-1">
+                            🔬 연구 성공
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              {self && (
+                <div className="rounded-card border-2 border-info bg-info/5 p-3">
+                  <p className="text-xs text-neutral">내 자산 (총)</p>
+                  <p className="text-2xl font-medium tabular-nums">
+                    {fmt(
+                      self.cash +
+                        Object.entries(self.holdings ?? {}).reduce(
+                          (sum, [cid, n]) =>
+                            sum + n * (state.companies[cid]?.price ?? 0),
+                          0
+                        )
+                    )}
+                  </p>
+                  <p className="text-xs text-neutral">
+                    현금 {fmt(self.cash)} + 주식 평가액
+                  </p>
+                </div>
+              )}
             </div>
           )}
           <p className="text-sm text-neutral">

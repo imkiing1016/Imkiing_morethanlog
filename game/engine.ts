@@ -17,6 +17,19 @@ export interface Conn {
 }
 
 const SHARES_OUTSTANDING = 1000; // 전원 동일 → 시작 시총 동일 (price × shares)
+const PRICE_HISTORY_LIMIT = 40; // 회사별 가격 히스토리 최대 보관 점수
+
+// 가격을 갱신하고 히스토리에 push. 한도 초과 시 가장 오래된 값 제거.
+function setPriceAndRecord(
+  co: { price: number; pricePoints: number[] },
+  newPrice: number
+) {
+  co.price = newPrice;
+  co.pricePoints.push(newPrice);
+  if (co.pricePoints.length > PRICE_HISTORY_LIMIT) {
+    co.pricePoints.shift();
+  }
+}
 
 // 글로벌 이벤트 헤드라인 (섹터 × 방향). SPEC 3.6 — 시장 전체 뉴스.
 const HEADLINES: Record<Sector, { up: string[]; down: string[] }> = {
@@ -264,7 +277,7 @@ export class GameRoom {
     player.cash = newCash;
     player.holdings[companyOwnerId] = after;
     // 주가 임팩트: +매수면 ↑, -매도면 ↓.
-    co.price = applyImpact(co.price, n, co.sharesOutstanding);
+    setPriceAndRecord(co, applyImpact(co.price, n, co.sharesOutstanding));
     this.broadcastSnapshot();
   }
 
@@ -367,6 +380,7 @@ export class GameRoom {
       techLevel: BALANCE.startingTech,
       trust: BALANCE.startingTrust,
       sharesOutstanding: SHARES_OUTSTANDING,
+      pricePoints: [BALANCE.startingPrice],
       lieCount: 0,
       auditedThisRound: false,
       researchBreakthroughThisRound: false,
@@ -463,6 +477,10 @@ export class GameRoom {
       p.declaration = undefined;
       p.purchasedInfos = [];
     }
+    // 회차 시작 — 가격 히스토리 새 회차분으로 초기화(현 가격 한 점부터 시작).
+    for (const co of Object.values(this.state.companies)) {
+      co.pricePoints = [co.price];
+    }
     this.rollGlobalEvent();
   }
 
@@ -548,13 +566,18 @@ export class GameRoom {
     for (const [cid, net] of netByCo.entries()) {
       const co = this.state.companies[cid];
       if (!co || net === 0) continue;
-      co.price = applyImpact(co.price, net, co.sharesOutstanding);
+      setPriceAndRecord(co, applyImpact(co.price, net, co.sharesOutstanding));
     }
   }
 
   // SPEC 2장 ⑤ + 1.1 + 3.6 + 3.7: 글로벌 이벤트 + 개인 이벤트 + 성장 보너스 +
   // 신뢰도 ±1 + 세무 조사 + 연구 잭팟. 매매는 TRADE 에서 이미 끝남.
   private onEnterSettle() {
+    // 0) 정산 전 스냅샷 (SETTLE 화면 비교용)
+    for (const co of Object.values(this.state.companies)) {
+      co.prevSettlePrice = co.price;
+      co.prevSettleTrust = co.trust;
+    }
     // 1) 글로벌 이벤트: 대상 섹터의 모든 회사 주가에 일괄 ±
     const ge = this.state.pendingGlobalEvent;
     const startPrices: Record<string, number> = {};
@@ -564,9 +587,9 @@ export class GameRoom {
     if (ge) {
       for (const co of Object.values(this.state.companies)) {
         if (co.sector === ge.sector) {
-          co.price = Math.max(
-            1,
-            Math.round(co.price * (1 + ge.magnitude))
+          setPriceAndRecord(
+            co,
+            Math.max(1, Math.round(co.price * (1 + ge.magnitude)))
           );
         }
       }
@@ -635,10 +658,13 @@ export class GameRoom {
 
       const prevPrice = co.price;
       // 합성 변동: 이벤트 + 성장보너스 + 세무 조사 + 연구 성공. 한 번에 곱.
-      co.price = Math.max(
-        1,
-        Math.round(
-          prevPrice * (1 + eventDelta + seedBonus + auditDelta + researchDelta)
+      setPriceAndRecord(
+        co,
+        Math.max(
+          1,
+          Math.round(
+            prevPrice * (1 + eventDelta + seedBonus + auditDelta + researchDelta)
+          )
         )
       );
 
