@@ -51,6 +51,11 @@ export interface Company {
   techLevel: number; // 1~5
   trust: number; // 0~5
   sharesOutstanding: number;
+  // SPEC 3.6.5 연구 성공
+  researchBreakthroughThisRound: boolean; // 이번 정산에서 연구 성공(잭팟) 발동 여부
+  // SPEC 3.7 세무 조사
+  lieCount: number; // 누적 거짓 선언 횟수 (audit 발동 시 0으로 리셋)
+  auditedThisRound: boolean; // 이번 정산에서 세무 조사 발동 여부 (UI/로그 표시용)
 }
 
 export interface PlayerState {
@@ -60,6 +65,8 @@ export interface PlayerState {
   holdings: Record<string /*companyOwnerId*/, number /*shares*/>;
   // 비공개(본인만): 이번 회차 내 섹터의 다음 이벤트 방향
   privateInfo?: Direction;
+  // 비공개(본인만): 정보 페이즈에서 돈을 내고 추가로 산 다른 회사 정보
+  purchasedInfos: Array<{ ownerId: string; direction: Direction }>;
   // 비공개: 이번 회차 사전 포지션(체결 전 의도) — 서버만 보관, 정산 시 반영
   pendingPosition?: Array<{ companyOwnerId: string; shares: number /* +매수 -매도 */ }>;
   // 공개: 이번 회차 선언
@@ -94,6 +101,8 @@ export type ClientMessage =
   | { type: "start" } // 호스트만: LOBBY → SETUP(사업 설립)
   // 사업 설립: 카테고리 + 회사명 + 창업 출자(0 ~ BALANCE.seedInvestedMax)
   | { type: "setup"; sector: Sector; name: string; seedInvested: number }
+  // 정보 페이즈: 다른 회사의 다음 이벤트 방향 1건 구매 (현금 지불, 최대 infoBuyMax)
+  | { type: "buyInfo"; targetOwnerId: string }
   // 선언 페이즈: HYPE/WARN/SILENT 1장 (보내면 자동으로 ready 처리)
   | { type: "declare"; declaration: Declaration }
   | { type: "ready" }; // 현재 페이즈 입력 완료 신호 (TRADE 제외 조기 전환용)

@@ -99,6 +99,9 @@ export class GameRoom {
       case "setup":
         this.handleSetup(id, msg.sector, msg.name, msg.seedInvested);
         break;
+      case "buyInfo":
+        this.handleBuyInfo(id, msg.targetOwnerId);
+        break;
       case "declare":
         this.handleDeclare(id, msg.declaration);
         break;
@@ -106,6 +109,30 @@ export class GameRoom {
         this.handleReady(id);
         break;
     }
+  }
+
+  // SPEC 2장 ①: 정보 페이즈에서 돈 내고 다른 회사 정보 1건 구매.
+  // 본인 정보 외 추가, 최대 infoBuyMax 건. 본인에게만 보임.
+  private handleBuyInfo(id: string, targetOwnerId: string) {
+    if (this.state.phase !== "INFO") return;
+    const player = this.state.players.find((p) => p.id === id);
+    if (!player) return;
+    if (targetOwnerId === id) return; // 본인 정보는 이미 무료로 봄
+    const target = this.state.players.find((p) => p.id === targetOwnerId);
+    if (!target || !target.privateInfo) return;
+    // 중복 구매 방지.
+    if (player.purchasedInfos.some((x) => x.ownerId === targetOwnerId)) return;
+    // 한도 체크.
+    if (player.purchasedInfos.length >= BALANCE.infoBuyMax) return;
+    // 현금 충분 확인.
+    if (player.cash < BALANCE.infoBuyCost) return;
+
+    player.cash -= BALANCE.infoBuyCost;
+    player.purchasedInfos.push({
+      ownerId: targetOwnerId,
+      direction: target.privateInfo,
+    });
+    this.broadcastSnapshot();
   }
 
   // SPEC 2장 ③: HYPE/WARN/SILENT 1장 선언 + 준비 처리.
@@ -146,6 +173,7 @@ export class GameRoom {
       holdings: {},
       ready: false,
       seedInvested: 0,
+      purchasedInfos: [],
       connected: true,
     };
     this.state.players.push(player);
@@ -171,6 +199,7 @@ export class GameRoom {
       p.privateInfo = undefined;
       p.pendingPosition = undefined;
       p.seedInvested = 0;
+      p.purchasedInfos = [];
     }
     this.state.round = 0;
     this.state.log.push({ round: 0, text: "게임 시작 — 사업 설립" });
@@ -205,6 +234,9 @@ export class GameRoom {
       techLevel: BALANCE.startingTech,
       trust: BALANCE.startingTrust,
       sharesOutstanding: SHARES_OUTSTANDING,
+      lieCount: 0,
+      auditedThisRound: false,
+      researchBreakthroughThisRound: false,
     };
     // 시작 자본에서 출자분만큼 차감(회차 1 시작 시 현금에 반영).
     player.cash = BALANCE.startingCash - seed;
@@ -294,15 +326,19 @@ export class GameRoom {
     for (const p of this.state.players) {
       p.privateInfo = Math.random() < 0.5 ? "BULLISH" : "BEARISH";
       p.declaration = undefined;
+      p.purchasedInfos = [];
     }
   }
 
-  // SPEC 2장 ⑤ + 1.1: 이벤트 발동(주가 ±), 창업 출자 성장 보너스, 신뢰도 ±1.
+  // SPEC 2장 ⑤ + 1.1 + 3.7: 이벤트 발동(주가 ±), 창업 출자 성장 보너스,
+  // 신뢰도 ±1, 거짓 누적 → 세무 조사 발동.
   // 매매·포지션 체결은 후반부(M3b)에서 추가.
   private onEnterSettle() {
     for (const p of this.state.players) {
       const co = this.state.companies[p.id];
       if (!co) continue;
+      co.auditedThisRound = false; // 매 정산마다 초기화
+      co.researchBreakthroughThisRound = false;
 
       // 이벤트 강도 랜덤. 방향은 본인 privateInfo.
       const [lo, hi] = BALANCE.eventMagnitudeRange;
@@ -317,29 +353,77 @@ export class GameRoom {
           : 0;
       const seedBonus = BALANCE.seedGrowthMax * seedRatio;
 
+      // 신뢰도 ±1 & 거짓 카운트 누적.
+      // 진실 = 선언 방향이 실제 방향과 일치, 거짓 = 불일치, SILENT = 둘 다 아님.
+      const isHype = p.declaration === "HYPE";
+      const isWarn = p.declaration === "WARN";
+      const isSilent = p.declaration === "SILENT";
+      const isLie =
+        (isHype && dir === "BEARISH") || (isWarn && dir === "BULLISH");
+      const isTruth =
+        (isHype && dir === "BULLISH") || (isWarn && dir === "BEARISH");
+
+      let trustDelta = 0;
+      if (isTruth) trustDelta = 1;
+      else if (isLie) trustDelta = -1;
+      // SILENT 는 0
+      co.trust = Math.max(0, Math.min(5, co.trust + trustDelta));
+
+      if (isLie) co.lieCount += 1;
+
+      // 세무 조사 발동(거짓 임계 초과 시): 추가 악재 −auditPenalty%.
+      let auditDelta = 0;
+      if (co.lieCount >= BALANCE.auditLieThreshold) {
+        const [alo, ahi] = BALANCE.auditPenaltyRange;
+        const auditMag = alo + Math.random() * (ahi - alo);
+        auditDelta = -auditMag;
+        co.auditedThisRound = true;
+        co.lieCount = 0; // 발동 후 누적 리셋(SPEC 3.7)
+      }
+
+      // 연구 성공 (SPEC 3.6.5): 출자에 비례한 낮은 확률 잭팟.
+      let researchDelta = 0;
+      const researchChance = BALANCE.researchBaseChance * seedRatio;
+      if (researchChance > 0 && Math.random() < researchChance) {
+        const [rlo, rhi] = BALANCE.researchBoostRange;
+        researchDelta = rlo + Math.random() * (rhi - rlo);
+        co.researchBreakthroughThisRound = true;
+      }
+
       const prevPrice = co.price;
-      // 합성 변동: 이벤트 + 성장보너스(둘 다 비율). 합쳐서 곱.
+      // 합성 변동: 이벤트 + 성장보너스 + 세무 조사 + 연구 성공. 한 번에 곱.
       co.price = Math.max(
         1,
-        Math.round(prevPrice * (1 + eventDelta + seedBonus))
+        Math.round(
+          prevPrice * (1 + eventDelta + seedBonus + auditDelta + researchDelta)
+        )
       );
-
-      // 신뢰도 ±1: 선언 == 실제 → +1, SILENT는 변동 없음, 다르면 −1.
-      let trustDelta = 0;
-      if (p.declaration === "SILENT") trustDelta = 0;
-      else if (p.declaration === "HYPE")
-        trustDelta = dir === "BULLISH" ? 1 : -1;
-      else if (p.declaration === "WARN")
-        trustDelta = dir === "BEARISH" ? 1 : -1;
-      co.trust = Math.max(0, Math.min(5, co.trust + trustDelta));
 
       // 사람이 읽는 한 줄 로그.
       const pct = ((co.price / prevPrice - 1) * 100).toFixed(1);
       const dirLabel = dir === "BULLISH" ? "호재" : "악재";
+      const trustText =
+        trustDelta === 0
+          ? isSilent
+            ? "침묵"
+            : "변동 없음"
+          : `신뢰도 ${trustDelta > 0 ? "+" : ""}${trustDelta}`;
       this.state.log.push({
         round: this.state.round,
-        text: `${co.name}: ${dirLabel} ${pct}% (신뢰도 ${trustDelta >= 0 ? "+" : ""}${trustDelta})`,
+        text: `${co.name}: ${dirLabel} ${pct}% (${trustText})`,
       });
+      if (co.auditedThisRound) {
+        this.state.log.push({
+          round: this.state.round,
+          text: `🚨 ${co.name} 세무 조사 — 거짓 선언 누적 페널티 ${(auditDelta * 100).toFixed(1)}%`,
+        });
+      }
+      if (co.researchBreakthroughThisRound) {
+        this.state.log.push({
+          round: this.state.round,
+          text: `🔬 ${co.name} 연구 성공 — 극호재 +${(researchDelta * 100).toFixed(1)}%`,
+        });
+      }
     }
   }
 
@@ -361,6 +445,7 @@ export class GameRoom {
       p.declaration = undefined;
       p.privateInfo = undefined;
       p.pendingPosition = undefined;
+      p.purchasedInfos = [];
     }
   }
 
@@ -379,7 +464,12 @@ export class GameRoom {
       players: this.state.players.map((p) =>
         p.id === viewerId
           ? p
-          : { ...p, privateInfo: undefined, pendingPosition: undefined }
+          : {
+              ...p,
+              privateInfo: undefined,
+              pendingPosition: undefined,
+              purchasedInfos: [],
+            }
       ),
     };
   }

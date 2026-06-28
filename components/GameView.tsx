@@ -241,21 +241,112 @@ export default function GameView({
       ) : (
         <section className="flex flex-col gap-3">
           {isInfo && self?.privateInfo && (
-            <div className="rounded-card border border-danger/30 bg-danger/5 p-4">
-              <p className="text-xs text-neutral">다음 회차 · 내 섹터 정보 (비공개)</p>
-              <p
-                className={`text-2xl font-medium ${
-                  self.privateInfo === "BULLISH" ? "text-success" : "text-danger"
-                }`}
-              >
-                {self.privateInfo === "BULLISH"
-                  ? "호재 ▲ 상승 예고"
-                  : "악재 ▼ 하락 예고"}
-              </p>
-              <p className="text-xs text-neutral">
-                강도는 비공개 · 이 정보는 나만 봅니다
-              </p>
-            </div>
+            <>
+              <div className="rounded-card border border-danger/30 bg-danger/5 p-4">
+                <p className="text-xs text-neutral">
+                  회차 {state.round} 정산 · 내 회사 정보 (비공개)
+                </p>
+                <p
+                  className={`text-2xl font-medium ${
+                    self.privateInfo === "BULLISH"
+                      ? "text-success"
+                      : "text-danger"
+                  }`}
+                >
+                  {self.privateInfo === "BULLISH"
+                    ? "호재 ▲ 상승 예고"
+                    : "악재 ▼ 하락 예고"}
+                </p>
+                <p className="text-xs text-neutral">
+                  강도는 비공개 · 이 정보는 나만 봅니다
+                </p>
+              </div>
+
+              {/* 산 정보 표시 */}
+              {self.purchasedInfos && self.purchasedInfos.length > 0 && (
+                <div className="rounded-card border border-neutral/20 p-3">
+                  <p className="text-xs text-neutral">구매한 정보</p>
+                  <ul className="flex flex-col gap-1 mt-1">
+                    {self.purchasedInfos.map((info) => {
+                      const co = state.companies[info.ownerId];
+                      if (!co) return null;
+                      return (
+                        <li
+                          key={info.ownerId}
+                          className="flex justify-between text-sm"
+                        >
+                          <span>
+                            {co.name} ({SECTOR_LABELS[co.sector]})
+                          </span>
+                          <span
+                            className={
+                              info.direction === "BULLISH"
+                                ? "text-success"
+                                : "text-danger"
+                            }
+                          >
+                            {info.direction === "BULLISH"
+                              ? "호재 ▲"
+                              : "악재 ▼"}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+
+              {/* 정보 구매 버튼들 */}
+              <div className="rounded-card border border-neutral/20 p-3 flex flex-col gap-2">
+                <div className="flex justify-between items-baseline">
+                  <p className="text-xs text-neutral">정보 구매</p>
+                  <p className="text-xs text-neutral">
+                    {self.purchasedInfos?.length ?? 0} / {BALANCE.infoBuyMax} ·{" "}
+                    {fmt(BALANCE.infoBuyCost)}/건
+                  </p>
+                </div>
+                {state.players
+                  .filter((other) => other.id !== selfId && state.companies[other.id])
+                  .map((other) => {
+                    const co = state.companies[other.id];
+                    const owned = self.purchasedInfos?.some(
+                      (x) => x.ownerId === other.id
+                    );
+                    const maxed =
+                      (self.purchasedInfos?.length ?? 0) >= BALANCE.infoBuyMax;
+                    const tooPoor = self.cash < BALANCE.infoBuyCost;
+                    return (
+                      <button
+                        key={other.id}
+                        disabled={owned || maxed || tooPoor}
+                        onClick={() =>
+                          send({ type: "buyInfo", targetOwnerId: other.id })
+                        }
+                        className="rounded-element border border-neutral/30 px-3 py-2 text-sm text-left flex justify-between items-center disabled:opacity-40"
+                      >
+                        <span>
+                          {co.name}{" "}
+                          <span className="text-neutral">
+                            ({SECTOR_LABELS[co.sector]})
+                          </span>
+                        </span>
+                        <span className="text-neutral">
+                          {owned
+                            ? "구매됨"
+                            : maxed
+                              ? "한도 초과"
+                              : tooPoor
+                                ? "잔액 부족"
+                                : "정보 구매"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                <p className="text-xs text-neutral">
+                  현금 {fmt(self.cash)}
+                </p>
+              </div>
+            </>
           )}
           {isSettle && myCompany && (
             <div className="rounded-card border border-info/30 bg-info/5 p-4">
