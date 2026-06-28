@@ -67,9 +67,37 @@ export default function GameView({
     if (state?.phase !== "POSITION") setPositionOrders({});
   }, [state?.phase]);
 
+  // SETUP 페이즈 진입 시 로컬 폼 상태 초기화 (재시작 등에서 잔여 상태 방지).
+  useEffect(() => {
+    if (state?.phase === "SETUP") {
+      setSector(null);
+      setBizName("");
+      setSeedManwon(0);
+    }
+  }, [state?.phase]);
+
   if (!state) return null;
 
   const self = state.players.find((p) => p.id === selfId);
+
+  // 게임 진행 중인데 내가 플레이어 목록에 없음(새로고침 등으로 id 변경) → 안내.
+  if (
+    !self &&
+    state.phase !== "LOBBY" &&
+    state.phase !== "SETUP" &&
+    state.phase !== "ENDED"
+  ) {
+    return (
+      <main className="flex flex-col gap-4 pt-12">
+        <div className="rounded-card border-2 border-danger bg-danger/10 p-4">
+          <p className="font-medium text-danger">관전 모드</p>
+          <p className="text-sm">
+            이 게임이 이미 진행 중이라 새로 참여할 수 없어요. 다음 판에 합류해주세요.
+          </p>
+        </div>
+      </main>
+    );
+  }
   const isSetup = state.phase === "SETUP";
   const isInfo = state.phase === "INFO";
   const isPosition = state.phase === "POSITION";
@@ -360,6 +388,16 @@ export default function GameView({
               const co = state.companies[other.id];
               const qty = positionOrders[other.id] ?? 0;
               const isMine = other.id === selfId;
+              const held = self?.holdings?.[other.id] ?? 0;
+              // 클램프: 매도는 보유까지만, 자기 회사 매수는 60% 상한까지만.
+              const minQty = -held;
+              const selfCap = Math.floor(
+                co.sharesOutstanding * BALANCE.maxSelfOwnership
+              );
+              const maxQty = isMine ? selfCap - held : 9999;
+              const step = BALANCE.liveTradeStep; // 한 클릭 = 10주
+              const canDecr = qty - step >= minQty;
+              const canIncr = qty + step <= maxQty;
               return (
                 <div
                   key={other.id}
@@ -377,21 +415,22 @@ export default function GameView({
                         )}
                       </p>
                       <p className="text-xs text-neutral">
-                        {SECTOR_LABELS[co.sector]} · 보유{" "}
-                        {self?.holdings?.[other.id] ?? 0}주
+                        {SECTOR_LABELS[co.sector]} · 보유 {held}주
+                        {isMine && ` · 최대 ${selfCap}주`}
                       </p>
                     </div>
                     <span className="tabular-nums">{fmt(co.price)}</span>
                   </div>
                   <div className="flex items-center justify-end gap-3">
                     <button
+                      disabled={!canDecr}
                       onClick={() =>
                         setPositionOrders((o) => ({
                           ...o,
-                          [other.id]: (o[other.id] ?? 0) - 1,
+                          [other.id]: Math.max(minQty, (o[other.id] ?? 0) - step),
                         }))
                       }
-                      className="w-10 h-10 rounded-element border-2 border-cardEdge bg-card text-xl font-medium"
+                      className="w-10 h-10 rounded-element border-2 border-cardEdge bg-card text-xl font-medium disabled:opacity-30"
                     >
                       −
                     </button>
@@ -407,13 +446,14 @@ export default function GameView({
                       {qty > 0 ? `+${qty}` : qty}
                     </span>
                     <button
+                      disabled={!canIncr}
                       onClick={() =>
                         setPositionOrders((o) => ({
                           ...o,
-                          [other.id]: (o[other.id] ?? 0) + 1,
+                          [other.id]: Math.min(maxQty, (o[other.id] ?? 0) + step),
                         }))
                       }
-                      className="w-10 h-10 rounded-element border-2 border-cardEdge bg-card text-xl font-medium"
+                      className="w-10 h-10 rounded-element border-2 border-cardEdge bg-card text-xl font-medium disabled:opacity-30"
                     >
                       +
                     </button>
@@ -421,33 +461,52 @@ export default function GameView({
                 </div>
               );
             })}
-          <div className="text-xs text-neutral">
-            예상 투입{" "}
-            <span className="font-medium">
-              {fmt(
-                Object.entries(positionOrders).reduce((sum, [cid, n]) => {
-                  const co = state.companies[cid];
-                  return sum + (co ? co.price * n : 0);
-                }, 0)
-              )}
-            </span>{" "}
-            · 현금 {fmt(self?.cash ?? 0)}
-          </div>
-          <button
-            disabled={self?.ready}
-            onClick={() => {
-              const orders = Object.entries(positionOrders)
-                .filter(([, n]) => n !== 0)
-                .map(([companyOwnerId, shares]) => ({
-                  companyOwnerId,
-                  shares,
-                }));
-              send({ type: "submitPosition", orders });
-            }}
-            className="rounded-element bg-danger px-4 py-3 text-paper font-medium disabled:opacity-40"
-          >
-            {self?.ready ? "포지션 확정됨 · 대기 중" : "포지션 확정 (비공개)"}
-          </button>
+          {(() => {
+            const totalCost = Object.entries(positionOrders).reduce(
+              (sum, [cid, n]) => {
+                const co = state.companies[cid];
+                return sum + (co ? co.price * n : 0);
+              },
+              0
+            );
+            const myCash = self?.cash ?? 0;
+            const overCash = totalCost > myCash;
+            return (
+              <>
+                <div className="text-xs text-neutral">
+                  예상 투입{" "}
+                  <span
+                    className={`font-medium ${overCash ? "text-danger" : ""}`}
+                  >
+                    {fmt(totalCost)}
+                  </span>{" "}
+                  · 현금 {fmt(myCash)}
+                  {overCash && (
+                    <span className="text-danger ml-1">· 잔액 부족</span>
+                  )}
+                </div>
+                <button
+                  disabled={self?.ready || overCash}
+                  onClick={() => {
+                    const orders = Object.entries(positionOrders)
+                      .filter(([, n]) => n !== 0)
+                      .map(([companyOwnerId, shares]) => ({
+                        companyOwnerId,
+                        shares,
+                      }));
+                    send({ type: "submitPosition", orders });
+                  }}
+                  className="rounded-element bg-warning px-4 py-3 text-ink font-medium disabled:opacity-40"
+                >
+                  {self?.ready
+                    ? "포지션 확정됨 · 대기 중"
+                    : Object.values(positionOrders).every((n) => !n)
+                      ? "포지션 없이 확정 (관망)"
+                      : "포지션 확정 (비공개)"}
+                </button>
+              </>
+            );
+          })()}
           <p className="text-xs text-neutral">
             확정 완료 {readyCount} / {connected.length}
           </p>

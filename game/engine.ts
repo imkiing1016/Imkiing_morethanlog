@@ -309,7 +309,8 @@ export class GameRoom {
       return;
     }
 
-    if (this.state.phase !== "LOBBY") return;
+    // LOBBY와 SETUP에서만 신규 합류 허용(SETUP은 새로고침 등으로 id 바뀐 경우 대비).
+    if (this.state.phase !== "LOBBY" && this.state.phase !== "SETUP") return;
     if (this.state.players.length >= ROOM.maxPlayers) return;
 
     const player: PlayerState = {
