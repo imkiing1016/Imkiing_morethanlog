@@ -18,6 +18,19 @@ export interface Conn {
 
 const SHARES_OUTSTANDING = 1000; // 전원 동일 → 시작 시총 동일 (price × shares)
 
+// 거래량 → 주가 임팩트. shares > 0 은 매수(상승), < 0 은 매도(하락).
+// 변동률 = priceImpactCoef × (체결주식 / sharesOutstanding)
+function applyImpact(
+  price: number,
+  shares: number,
+  sharesOutstanding: number
+): number {
+  if (sharesOutstanding <= 0) return price;
+  const ratio = shares / sharesOutstanding;
+  const newPrice = price * (1 + BALANCE.priceImpactCoef * ratio);
+  return Math.max(1, Math.round(newPrice));
+}
+
 // 페이즈 진입 시 남길 로그 문구 (사람이 읽는 한 줄).
 const PHASE_LOG: Record<Phase, string> = {
   SETUP: "사업 설립 — 카테고리/회사명 설정",
@@ -102,6 +115,12 @@ export class GameRoom {
       case "buyInfo":
         this.handleBuyInfo(id, msg.targetOwnerId);
         break;
+      case "submitPosition":
+        this.handleSubmitPosition(id, msg.orders);
+        break;
+      case "trade":
+        this.handleTrade(id, msg.companyOwnerId, msg.shares);
+        break;
       case "declare":
         this.handleDeclare(id, msg.declaration);
         break;
@@ -132,6 +151,87 @@ export class GameRoom {
       ownerId: targetOwnerId,
       direction: target.privateInfo,
     });
+    this.broadcastSnapshot();
+  }
+
+  // SPEC 2장 ②: 비공개 사전 포지션 제출.
+  // 새 주문 배열로 기존 pendingPosition 을 통째로 덮어쓴다(수정 가능).
+  // 가상 시뮬레이션으로 자기 자본/지분 제약 모두 검증한 뒤 통째로 받는다(부분 수용 X).
+  private handleSubmitPosition(
+    id: string,
+    orders: Array<{ companyOwnerId: string; shares: number }>
+  ) {
+    if (this.state.phase !== "POSITION") return;
+    const player = this.state.players.find((p) => p.id === id);
+    if (!player) return;
+    if (!Array.isArray(orders)) return;
+
+    // 청결화: 정수, 0 주문 제거, 알 수 없는 회사 제거, 같은 회사 합치기.
+    const merged = new Map<string, number>();
+    for (const o of orders) {
+      if (!o || typeof o.companyOwnerId !== "string") continue;
+      const co = this.state.companies[o.companyOwnerId];
+      if (!co) continue;
+      const shares = Math.trunc(Number(o.shares) || 0);
+      if (shares === 0) continue;
+      merged.set(o.companyOwnerId, (merged.get(o.companyOwnerId) ?? 0) + shares);
+    }
+    const cleaned = Array.from(merged.entries())
+      .filter(([, n]) => n !== 0)
+      .map(([companyOwnerId, shares]) => ({ companyOwnerId, shares }));
+
+    // 시뮬레이션: 자본/지분 제약 확인. 현재 가격 기준.
+    let cash = player.cash;
+    const simHoldings: Record<string, number> = { ...player.holdings };
+    for (const o of cleaned) {
+      const co = this.state.companies[o.companyOwnerId];
+      const cost = o.shares * co.price; // +매수 +비용, -매도 -비용(=환매수익)
+      cash -= cost;
+      const after = (simHoldings[o.companyOwnerId] ?? 0) + o.shares;
+      if (after < 0) return; // 보유보다 더 매도 불가
+      if (
+        o.companyOwnerId === id &&
+        after > Math.floor(co.sharesOutstanding * BALANCE.maxSelfOwnership)
+      ) {
+        return; // 자기 회사 60% 상한
+      }
+      simHoldings[o.companyOwnerId] = after;
+    }
+    if (cash < 0) return; // 잔여 현금 음수 불가
+
+    player.pendingPosition = cleaned;
+    player.ready = true;
+    if (!this.tryAdvanceOnReady()) this.broadcastSnapshot();
+  }
+
+  // SPEC 2장 ④: 거래 페이즈 단건 즉시 체결.
+  private handleTrade(id: string, companyOwnerId: string, shares: number) {
+    if (this.state.phase !== "TRADE") return;
+    const player = this.state.players.find((p) => p.id === id);
+    if (!player) return;
+    const co = this.state.companies[companyOwnerId];
+    if (!co) return;
+    const n = Math.trunc(Number(shares) || 0);
+    if (n === 0) return;
+
+    const cost = n * co.price;
+    const newCash = player.cash - cost;
+    if (newCash < 0) return; // 잔액 부족
+
+    const held = player.holdings[companyOwnerId] ?? 0;
+    const after = held + n;
+    if (after < 0) return; // 보유보다 더 매도 불가
+    if (
+      companyOwnerId === id &&
+      after > Math.floor(co.sharesOutstanding * BALANCE.maxSelfOwnership)
+    ) {
+      return; // 자기 회사 60% 상한
+    }
+
+    player.cash = newCash;
+    player.holdings[companyOwnerId] = after;
+    // 주가 임팩트: +매수면 ↑, -매도면 ↓.
+    co.price = applyImpact(co.price, n, co.sharesOutstanding);
     this.broadcastSnapshot();
   }
 
@@ -307,6 +407,7 @@ export class GameRoom {
     for (const p of this.state.players) p.ready = false;
 
     if (phase === "INFO") this.onEnterInfo();
+    if (phase === "TRADE") this.onEnterTrade();
     if (phase === "SETTLE") this.onEnterSettle();
 
     if (phase === "TRADE") {
@@ -327,6 +428,46 @@ export class GameRoom {
       p.privateInfo = Math.random() < 0.5 ? "BULLISH" : "BEARISH";
       p.declaration = undefined;
       p.purchasedInfos = [];
+    }
+  }
+
+  // SPEC 2장 ④ 진입: POSITION 의 비공개 주문들을 일괄 체결한다.
+  // 1) 각 플레이어의 pendingPosition 을 현재 가격에 체결(현금↔보유 갱신).
+  // 2) 회사별 순 거래량을 모아 일괄 주가 임팩트 적용.
+  // 3) pendingPosition 제거(= 공개됨).
+  private onEnterTrade() {
+    const netByCo = new Map<string, number>(); // companyOwnerId -> net shares
+    for (const p of this.state.players) {
+      if (!p.pendingPosition || p.pendingPosition.length === 0) continue;
+      for (const o of p.pendingPosition) {
+        const co = this.state.companies[o.companyOwnerId];
+        if (!co) continue;
+        const cost = o.shares * co.price;
+        // 최종 검증: 만에 하나 가격이 바뀐 경우(여기선 정적이지만 방어적).
+        if (p.cash - cost < 0) continue;
+        const held = p.holdings[o.companyOwnerId] ?? 0;
+        const after = held + o.shares;
+        if (after < 0) continue;
+        if (
+          o.companyOwnerId === p.id &&
+          after > Math.floor(co.sharesOutstanding * BALANCE.maxSelfOwnership)
+        ) {
+          continue;
+        }
+        p.cash -= cost;
+        p.holdings[o.companyOwnerId] = after;
+        netByCo.set(
+          o.companyOwnerId,
+          (netByCo.get(o.companyOwnerId) ?? 0) + o.shares
+        );
+      }
+      p.pendingPosition = undefined;
+    }
+    // 일괄 임팩트.
+    for (const [cid, net] of netByCo.entries()) {
+      const co = this.state.companies[cid];
+      if (!co || net === 0) continue;
+      co.price = applyImpact(co.price, net, co.sharesOutstanding);
     }
   }
 

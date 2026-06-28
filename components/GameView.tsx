@@ -49,6 +49,10 @@ export default function GameView({
   const [bizName, setBizName] = useState("");
   // 창업 출자(만원 단위 슬라이더 → 원 단위 값). 기본 0.
   const [seedManwon, setSeedManwon] = useState(0);
+  // 포지션 페이즈: 회사별 ±수량(클라 로컬). 제출 전까지 자유 편집.
+  const [positionOrders, setPositionOrders] = useState<Record<string, number>>(
+    {}
+  );
 
   // 거래 페이즈 카운트다운 표시용(렌더 전용, 게임 계산 아님).
   const [now, setNow] = useState(() => Date.now());
@@ -57,11 +61,17 @@ export default function GameView({
     return () => clearInterval(t);
   }, []);
 
+  // POSITION 페이즈 떠나면 입력 초기화.
+  useEffect(() => {
+    if (state?.phase !== "POSITION") setPositionOrders({});
+  }, [state?.phase]);
+
   if (!state) return null;
 
   const self = state.players.find((p) => p.id === selfId);
   const isSetup = state.phase === "SETUP";
   const isInfo = state.phase === "INFO";
+  const isPosition = state.phase === "POSITION";
   const isDeclare = state.phase === "DECLARE";
   const isSettle = state.phase === "SETTLE";
   const isTrade = state.phase === "TRADE";
@@ -201,10 +211,171 @@ export default function GameView({
           </p>
         </section>
       ) : isTrade ? (
-        <section className="flex flex-col gap-2 rounded-card border border-success/30 p-4">
-          <p className="font-medium text-success">거래 진행 중</p>
+        <section className="flex flex-col gap-3">
           <p className="text-sm text-neutral">
-            제한시간이 끝나면 서버가 자동으로 정산 페이즈로 넘어갑니다. (실시간 호가는 다음 단계)
+            매수/매도하면 거래량에 따라 주가가 즉시 변동합니다.
+            한 번에 {BALANCE.liveTradeStep}주씩 체결.
+          </p>
+          {state.players
+            .filter((other) => state.companies[other.id])
+            .map((other) => {
+              const co = state.companies[other.id];
+              const held = self?.holdings?.[other.id] ?? 0;
+              const isMine = other.id === selfId;
+              const step = BALANCE.liveTradeStep;
+              return (
+                <div
+                  key={other.id}
+                  className="rounded-card border border-neutral/20 p-3 flex flex-col gap-2"
+                >
+                  <div className="flex justify-between items-baseline">
+                    <span className="font-medium">
+                      {co.name}
+                      <span className="ml-2 text-xs text-neutral">
+                        ({SECTOR_LABELS[co.sector]}){isMine && " · 내 회사"}
+                      </span>
+                    </span>
+                    <span className="tabular-nums font-medium">
+                      {fmt(co.price)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs text-neutral">
+                    <span>
+                      보유 {held}주 ({co.trust}/5★ ·{" "}
+                      {other.declaration ?? "—"})
+                    </span>
+                    <span>1주 {fmt(co.price)}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() =>
+                        send({
+                          type: "trade",
+                          companyOwnerId: other.id,
+                          shares: step,
+                        })
+                      }
+                      className="flex-1 rounded-element bg-success/10 border border-success/40 text-success px-3 py-2 font-medium text-sm"
+                    >
+                      매수 +{step}
+                    </button>
+                    <button
+                      onClick={() =>
+                        send({
+                          type: "trade",
+                          companyOwnerId: other.id,
+                          shares: -step,
+                        })
+                      }
+                      className="flex-1 rounded-element bg-danger/10 border border-danger/40 text-danger px-3 py-2 font-medium text-sm"
+                    >
+                      매도 −{step}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          <p className="text-xs text-neutral">
+            현금 {fmt(self?.cash ?? 0)} · 시간이 끝나면 자동 정산
+          </p>
+        </section>
+      ) : isPosition ? (
+        <section className="flex flex-col gap-3">
+          <p className="text-sm text-neutral">
+            선언 전, 비공개로 매수/매도 의도를 깔아둡니다. 다른 사람에겐 안 보입니다.
+          </p>
+          {state.players
+            .filter((other) => state.companies[other.id])
+            .map((other) => {
+              const co = state.companies[other.id];
+              const qty = positionOrders[other.id] ?? 0;
+              const isMine = other.id === selfId;
+              return (
+                <div
+                  key={other.id}
+                  className="rounded-card border border-neutral/20 p-3 flex flex-col gap-2"
+                >
+                  <div className="flex justify-between items-baseline">
+                    <span className="font-medium">
+                      {co.name}
+                      <span className="ml-2 text-xs text-neutral">
+                        ({SECTOR_LABELS[co.sector]}){isMine && " · 내 회사"}
+                      </span>
+                    </span>
+                    <span className="tabular-nums">{fmt(co.price)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-neutral">
+                      현 보유 {self?.holdings?.[other.id] ?? 0}주
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() =>
+                          setPositionOrders((o) => ({
+                            ...o,
+                            [other.id]: (o[other.id] ?? 0) - 1,
+                          }))
+                        }
+                        className="w-9 h-9 rounded-element border border-neutral/30 font-medium"
+                      >
+                        −
+                      </button>
+                      <span
+                        className={`tabular-nums min-w-[2.5rem] text-center font-medium ${
+                          qty > 0
+                            ? "text-success"
+                            : qty < 0
+                              ? "text-danger"
+                              : "text-neutral"
+                        }`}
+                      >
+                        {qty > 0 ? `+${qty}` : qty}
+                      </span>
+                      <button
+                        onClick={() =>
+                          setPositionOrders((o) => ({
+                            ...o,
+                            [other.id]: (o[other.id] ?? 0) + 1,
+                          }))
+                        }
+                        className="w-9 h-9 rounded-element border border-neutral/30 font-medium"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          <div className="text-xs text-neutral">
+            예상 투입{" "}
+            <span className="font-medium">
+              {fmt(
+                Object.entries(positionOrders).reduce((sum, [cid, n]) => {
+                  const co = state.companies[cid];
+                  return sum + (co ? co.price * n : 0);
+                }, 0)
+              )}
+            </span>{" "}
+            · 현금 {fmt(self?.cash ?? 0)}
+          </div>
+          <button
+            disabled={self?.ready}
+            onClick={() => {
+              const orders = Object.entries(positionOrders)
+                .filter(([, n]) => n !== 0)
+                .map(([companyOwnerId, shares]) => ({
+                  companyOwnerId,
+                  shares,
+                }));
+              send({ type: "submitPosition", orders });
+            }}
+            className="rounded-element bg-danger px-4 py-3 text-paper font-medium disabled:opacity-40"
+          >
+            {self?.ready ? "포지션 확정됨 · 대기 중" : "포지션 확정 (비공개)"}
+          </button>
+          <p className="text-xs text-neutral">
+            확정 완료 {readyCount} / {connected.length}
           </p>
         </section>
       ) : isDeclare ? (

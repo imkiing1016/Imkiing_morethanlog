@@ -270,6 +270,9 @@ export const BALANCE = {
   auditPenaltyRange: [0.15, 0.25] as const, // 세무 조사 추가 악재 폭(15~25%)
   infoBuyCost: 500_000,             // 정보 1건 구매 비용
   infoBuyMax: 2,                    // 회차당 본인 외 추가로 살 수 있는 정보 건수
+  priceImpactCoef: 0.2,             // 거래량 → 주가 임팩트 계수
+                                     // 주가변동률 = priceImpactCoef × (체결주식/sharesOutstanding)
+  liveTradeStep: 10,                // TRADE 페이즈 +/- 버튼 한 클릭당 거래 단위
   maxSelfOwnership: 0.60,           // 자기 회사 지분 상한
   trustInfluence: (t: number) => 0.4 + 0.12 * t,
   eventMagnitudeRange: [0.15, 0.40] as const, // 강도 랜덤 범위

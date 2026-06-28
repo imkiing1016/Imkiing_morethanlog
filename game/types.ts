@@ -103,6 +103,13 @@ export type ClientMessage =
   | { type: "setup"; sector: Sector; name: string; seedInvested: number }
   // 정보 페이즈: 다른 회사의 다음 이벤트 방향 1건 구매 (현금 지불, 최대 infoBuyMax)
   | { type: "buyInfo"; targetOwnerId: string }
+  // 포지션 페이즈: 비공개 매수/매도 의도 일괄 제출 (양수=매수, 음수=매도)
+  | {
+      type: "submitPosition";
+      orders: Array<{ companyOwnerId: string; shares: number }>;
+    }
+  // 거래 페이즈: 실시간 단건 체결 (양수=매수, 음수=매도)
+  | { type: "trade"; companyOwnerId: string; shares: number }
   // 선언 페이즈: HYPE/WARN/SILENT 1장 (보내면 자동으로 ready 처리)
   | { type: "declare"; declaration: Declaration }
   | { type: "ready" }; // 현재 페이즈 입력 완료 신호 (TRADE 제외 조기 전환용)
