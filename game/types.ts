@@ -111,6 +111,15 @@ export interface GameState {
   pendingGlobalEvent?: { sector: Sector; magnitude: number; headline: string };
   // 평균회귀용: 직전 회차에 누적 가격 변동률이 가장 컸던 섹터(과열 응징).
   lastHotSector?: Sector;
+  // 게임 종료 시 최종 순위(총자산 기준). ENDED 진입 시 서버에서 계산해 채운다.
+  finalRankings?: Array<{
+    playerId: string;
+    nickname: string;
+    totalAssets: number;
+    cash: number;
+    stocksValue: number;
+    ownCompanyValue: number;
+  }>;
   log: Array<{ round: number; text: string }>;
 }
 
