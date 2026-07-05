@@ -120,72 +120,85 @@ export default function GameView({
 
   return (
     <main className="flex flex-col gap-6 pt-8">
-      <header className="rounded-card border-2 border-cardEdge bg-card p-3 flex items-center justify-between">
-        <div className="flex flex-col gap-0.5">
-          {state.round >= 1 && (
-            <p className="text-xs text-neutral">
-              회차 {state.round} / {state.maxRounds}
-            </p>
-          )}
-          <p className={`text-xl font-medium ${PHASE_ACCENT[state.phase]}`}>
-            🐾 {PHASE_LABEL[state.phase]}
-          </p>
-        </div>
-        {secondsLeft !== null && (
-          <span className="rounded-element bg-accentSoft border-2 border-cardEdge px-3 py-1.5 text-xl font-medium text-warning tabular-nums">
-            ⏱ {secondsLeft}s
-          </span>
-        )}
-      </header>
-
-      {state.pendingGlobalEvent && (
-        <div
-          className={`rounded-card border-2 border-cardEdge p-3 ${
-            state.pendingGlobalEvent.magnitude > 0
-              ? "bg-success/10"
-              : "bg-danger/10"
-          }`}
-        >
-          <p className="text-xs text-neutral">시장 뉴스</p>
-          <p className="font-medium">
-            🌐 {state.pendingGlobalEvent.headline}
-            <span
-              className={`ml-2 tabular-nums ${
-                state.pendingGlobalEvent.magnitude > 0
-                  ? "text-success"
-                  : "text-danger"
-              }`}
-            >
-              {state.pendingGlobalEvent.magnitude > 0 ? "+" : ""}
-              {(state.pendingGlobalEvent.magnitude * 100).toFixed(1)}%
+      {/* 상단 통합 바: 회차 · 페이즈 · 타이머 + 내 회사 요약 + 현금 + 보유 주식 */}
+      <header className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2">
+        {/* 1행: 회차/페이즈 + 타이머 */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-baseline gap-2">
+            {state.round >= 1 && (
+              <span className="text-xs text-neutral tabular-nums">
+                R {state.round}/{state.maxRounds}
+              </span>
+            )}
+            <span className={`text-lg font-medium ${PHASE_ACCENT[state.phase]}`}>
+              {PHASE_LABEL[state.phase]}
             </span>
-          </p>
+          </div>
+          {secondsLeft !== null && (
+            <span className="rounded-element bg-accentSoft border-2 border-cardEdge px-3 py-0.5 text-lg font-medium text-warning tabular-nums">
+              ⏱ {secondsLeft}s
+            </span>
+          )}
         </div>
-      )}
 
-      {state.round >= 1 && self && (
-        <div className="rounded-card border-2 border-cardEdge bg-card p-3 flex justify-between text-sm">
-          <div>
-            <p className="text-xs text-neutral">현금</p>
-            <p className="font-medium tabular-nums">{fmt(self.cash)}</p>
+        {/* 2행: 내 회사 이름 + 카테고리 + 현금 */}
+        {state.round >= 1 && self && (
+          <div className="flex items-center justify-between border-t border-cardEdge pt-2">
+            {myCompany ? (
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <span className="mascot text-2xl">
+                  {SECTOR_MASCOTS[myCompany.sector]}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {myCompany.name}
+                  </p>
+                  <p className="text-xs text-neutral">
+                    {SECTOR_LABELS[myCompany.sector]} · Lv{myCompany.techLevel} ·
+                    ★{myCompany.trust} · {fmt(myCompany.price)}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <span className="text-xs text-neutral">회사 없음 (관전 모드)</span>
+            )}
+            <div className="text-right ml-2">
+              <p className="text-xs text-neutral">현금</p>
+              <p className="text-sm font-medium tabular-nums">
+                {fmt(self.cash)}
+              </p>
+            </div>
           </div>
-          <div className="text-right">
-            <p className="text-xs text-neutral">내 회사</p>
-            <p className="font-medium">
-              {myCompany ? (
-                <>
-                  <span className="mascot mr-1">
-                    {SECTOR_MASCOTS[myCompany.sector]}
-                  </span>
-                  {fmt(myCompany.price)}
-                </>
-              ) : (
-                "—"
-              )}
-            </p>
-          </div>
-        </div>
-      )}
+        )}
+
+        {/* 3행: 내 보유 주식 (있을 때만) */}
+        {state.round >= 1 &&
+          self &&
+          Object.entries(self.holdings ?? {}).filter(([, n]) => n > 0).length >
+            0 && (
+            <div className="flex flex-wrap gap-1 border-t border-cardEdge pt-2">
+              {Object.entries(self.holdings)
+                .filter(([, n]) => n > 0)
+                .map(([cid, n]) => {
+                  const co = state.companies[cid];
+                  if (!co) return null;
+                  return (
+                    <span
+                      key={cid}
+                      className="text-xs rounded-element bg-paper border border-cardEdge px-2 py-0.5 flex items-center gap-1"
+                    >
+                      <span className="mascot text-sm">
+                        {SECTOR_MASCOTS[co.sector]}
+                      </span>
+                      <span className="tabular-nums">
+                        {n}주 · {fmt(co.price)}
+                      </span>
+                    </span>
+                  );
+                })}
+            </div>
+          )}
+      </header>
 
       {isSetup ? (
         <section className="flex flex-col gap-4">
@@ -387,7 +400,7 @@ export default function GameView({
       ) : isManage ? (
         <section className="flex flex-col gap-3">
           <p className="text-sm text-neutral">
-            30초 안에 회사를 관리할 수 있어요. 기술 업그레이드, 사업 전환, 회사 매각.
+            30초 안에 회사를 관리할 수 있어요. 연구, 기술 업그레이드, 사업 전환, 회사 매각.
           </p>
 
           {myCompany && (
@@ -403,6 +416,76 @@ export default function GameView({
                 </div>
                 <span className="tabular-nums text-sm">{fmt(myCompany.price)}</span>
               </div>
+
+              {/* 연구 (SPEC 3.6.5): 3단계 tier — 대성공 / 성공 / 실패 */}
+              {(() => {
+                const done = myCompany.researchDoneThisManage;
+                const outcome = myCompany.lastResearchOutcome;
+                const outcomeLabel =
+                  outcome === "jackpot"
+                    ? "🎉 대성공"
+                    : outcome === "success"
+                      ? "🔬 성공"
+                      : outcome === "fail"
+                        ? "💧 실패"
+                        : null;
+                return (
+                  <div className="rounded-element border-2 border-cardEdge bg-paper p-2 flex flex-col gap-2">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-sm font-medium">🔬 연구 투자</span>
+                      {done && (
+                        <span
+                          className={`text-xs ${outcome === "jackpot" || outcome === "success" ? "text-success" : "text-neutral"}`}
+                        >
+                          {outcomeLabel}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-1">
+                      {BALANCE.researchTiers.map((tier, idx) => {
+                        const affordable = (self?.cash ?? 0) >= tier.cost;
+                        return (
+                          <button
+                            key={idx}
+                            disabled={done || !affordable}
+                            onClick={() =>
+                              send({
+                                type: "research",
+                                tier: idx as 0 | 1 | 2,
+                              })
+                            }
+                            className="rounded-element border-2 border-cardEdge bg-card px-2 py-2 text-xs flex flex-col items-center disabled:opacity-40"
+                          >
+                            <span className="text-sm font-medium">
+                              {fmt(tier.cost)}
+                            </span>
+                            <span className="text-neutral text-[10px] mt-1">
+                              🎉 {(tier.jackpot * 100).toFixed(0)}% · 🔬{" "}
+                              {(tier.success * 100).toFixed(0)}%
+                            </span>
+                            <span className="text-neutral text-[10px]">
+                              💧{" "}
+                              {((1 - tier.jackpot - tier.success) * 100).toFixed(
+                                0
+                              )}
+                              %
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] text-neutral">
+                      대성공 +
+                      {(BALANCE.researchJackpotRange[0] * 100).toFixed(0)}~
+                      {(BALANCE.researchJackpotRange[1] * 100).toFixed(0)}%
+                      · 성공 +
+                      {(BALANCE.researchSuccessRange[0] * 100).toFixed(0)}~
+                      {(BALANCE.researchSuccessRange[1] * 100).toFixed(0)}%
+                      · 실패 손실 없음
+                    </p>
+                  </div>
+                );
+              })()}
 
               {/* 기술 업그레이드 */}
               {(() => {
@@ -922,6 +1005,47 @@ export default function GameView({
           )}
           {isSettle && (
             <div className="flex flex-col gap-3">
+              <div className="rounded-card border-2 border-info bg-info/10 p-3">
+                <p className="text-xs text-neutral">🔔 회차 {state.round} 장 마감</p>
+                <p className="text-lg font-medium">최종 종가</p>
+                <ul className="mt-2 flex flex-col gap-1">
+                  {state.players
+                    .filter((p) => state.companies[p.id])
+                    .map((p) => {
+                      const co = state.companies[p.id];
+                      const prev = co.prevSettlePrice ?? co.price;
+                      const pct = prev > 0 ? ((co.price - prev) / prev) * 100 : 0;
+                      return (
+                        <li
+                          key={p.id}
+                          className="flex justify-between text-sm"
+                        >
+                          <span>
+                            <span className="mascot mr-1">
+                              {SECTOR_MASCOTS[co.sector]}
+                            </span>
+                            {co.name}
+                          </span>
+                          <span className="tabular-nums">
+                            {fmt(co.price)}{" "}
+                            <span
+                              className={
+                                pct > 0
+                                  ? "text-success"
+                                  : pct < 0
+                                    ? "text-danger"
+                                    : "text-neutral"
+                              }
+                            >
+                              {pct > 0 ? "▲" : pct < 0 ? "▼" : "─"}
+                              {Math.abs(pct).toFixed(1)}%
+                            </span>
+                          </span>
+                        </li>
+                      );
+                    })}
+                </ul>
+              </div>
               <p className="text-sm text-neutral">📊 회차 {state.round} 결과</p>
               {state.players
                 .filter((other) => state.companies[other.id])

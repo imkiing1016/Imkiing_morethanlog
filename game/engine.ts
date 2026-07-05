@@ -18,6 +18,8 @@ export interface Conn {
 
 const SHARES_OUTSTANDING = 1000; // 전원 동일 → 시작 시총 동일 (price × shares)
 const PRICE_HISTORY_LIMIT = 40; // 회사별 가격 히스토리 최대 보관 점수
+const NEWS_LIMIT = 20; // 뉴스 이벤트 최대 보관 (오래된 것부터 제거)
+let nextNewsId = 1;
 
 // 가격을 갱신하고 히스토리에 push. 한도 초과 시 가장 오래된 값 제거.
 function setPriceAndRecord(
@@ -96,6 +98,7 @@ export class GameRoom {
   state: GameState;
   private conns = new Map<string, Conn>();
   private tradeTimer?: ReturnType<typeof setTimeout>;
+  private noiseTimer?: ReturnType<typeof setInterval>;
 
   constructor(roomCode: string) {
     this.state = {
@@ -107,6 +110,7 @@ export class GameRoom {
       players: [],
       companies: {},
       auctions: [],
+      newsEvents: [],
       log: [],
     };
   }
@@ -176,6 +180,9 @@ export class GameRoom {
         break;
       case "techUpgrade":
         this.handleTechUpgrade(id);
+        break;
+      case "research":
+        this.handleResearch(id, msg.tier);
         break;
       case "pivot":
         this.handlePivot(id, msg.newSector);
@@ -316,6 +323,70 @@ export class GameRoom {
       round: this.state.round,
       text: `🔧 ${co.name} 기술 Lv.${co.techLevel} 업그레이드 (−${cost.toLocaleString()}원)`,
     });
+    this.broadcastSnapshot();
+  }
+
+  // SPEC 3.6.5 관리 페이즈: 연구 투자.
+  // tier 0/1/2 (100만/300만/500만). 확률에 따라 대성공/성공/실패.
+  // 회차당 1회. 결과는 즉시 회사 주가에 적용.
+  private handleResearch(id: string, tier: 0 | 1 | 2) {
+    if (this.state.phase !== "MANAGE") return;
+    const player = this.state.players.find((p) => p.id === id);
+    if (!player) return;
+    const co = this.state.companies[id];
+    if (!co) return;
+    if (co.researchDoneThisManage) return; // 이미 이번 회차 연구함
+    const config = BALANCE.researchTiers[tier];
+    if (!config) return;
+    if (player.cash < config.cost) return;
+
+    player.cash -= config.cost;
+    co.researchDoneThisManage = true;
+
+    const roll = Math.random();
+    let outcome: "jackpot" | "success" | "fail";
+    let boost = 0;
+    if (roll < config.jackpot) {
+      outcome = "jackpot";
+      const [lo, hi] = BALANCE.researchJackpotRange;
+      boost = lo + Math.random() * (hi - lo);
+    } else if (roll < config.jackpot + config.success) {
+      outcome = "success";
+      const [lo, hi] = BALANCE.researchSuccessRange;
+      boost = lo + Math.random() * (hi - lo);
+    } else {
+      outcome = "fail";
+      boost = 0; // 4-2 A: 실패 시 손실 없음
+    }
+    co.lastResearchOutcome = outcome;
+
+    if (boost > 0) {
+      setPriceAndRecord(
+        co,
+        Math.max(1, Math.round(co.price * (1 + boost)))
+      );
+    }
+
+    const emoji = outcome === "jackpot" ? "🎉" : outcome === "success" ? "🔬" : "💧";
+    const label =
+      outcome === "jackpot"
+        ? `대성공 +${(boost * 100).toFixed(1)}%`
+        : outcome === "success"
+          ? `성공 +${(boost * 100).toFixed(1)}%`
+          : `실패`;
+    this.state.log.push({
+      round: this.state.round,
+      text: `${emoji} ${co.name} 연구 ${label} (투자 ${config.cost.toLocaleString()}원)`,
+    });
+    // 뉴스 이벤트: 모든 플레이어에게 팝업으로 표시
+    this.pushNews(
+      emoji,
+      `${co.name} 연구 ${outcome === "jackpot" ? "대성공" : outcome === "success" ? "성공" : "실패"}`,
+      outcome === "fail"
+        ? `${player.nickname} 투자 ${config.cost.toLocaleString()}원 · 별 소득 없이 마무리`
+        : `${player.nickname} 투자 ${config.cost.toLocaleString()}원 → 주가 +${(boost * 100).toFixed(1)}%`,
+      outcome === "fail" ? "neutral" : "good"
+    );
     this.broadcastSnapshot();
   }
 
@@ -568,6 +639,8 @@ export class GameRoom {
       lieCount: 0,
       auditedThisRound: false,
       researchBreakthroughThisRound: false,
+      researchDoneThisManage: false,
+      lastResearchOutcome: undefined,
     };
     // 시작 자본에서 출자분만큼 차감(회차 1 시작 시 현금에 반영).
     player.cash = BALANCE.startingCash - seed;
@@ -659,6 +732,8 @@ export class GameRoom {
       const ms = BALANCE.tradeWindowSec * 1000;
       this.state.phaseDeadline = Date.now() + ms;
       this.tradeTimer = setTimeout(() => this.onTradeTimeout(), ms);
+      // 시장 마이크로 노이즈 시작 (1B: 상시 잔파도)
+      this.startMarketNoise();
     } else if (phase === "MANAGE") {
       // SPEC 3.3~3.5: 30초 관리 페이즈 타이머. 종료 시 자동 다음 회차/게임 종료.
       const ms = BALANCE.manageWindowSec * 1000;
@@ -666,6 +741,11 @@ export class GameRoom {
       this.tradeTimer = setTimeout(() => this.onManageTimeout(), ms);
       // 새 페이즈 시작 시 경매 초기화 (이전 회차 데이터 잔재 방지)
       this.state.auctions = [];
+      // 연구는 회차당 1회 → MANAGE 진입 시 리셋.
+      for (const co of Object.values(this.state.companies)) {
+        co.researchDoneThisManage = false;
+        co.lastResearchOutcome = undefined;
+      }
     } else {
       this.state.phaseDeadline = undefined;
     }
@@ -733,6 +813,13 @@ export class GameRoom {
       round: this.state.round,
       text: `🌐 [예고] ${this.state.pendingGlobalEvent.headline}`,
     });
+    // 시장 뉴스 팝업
+    this.pushNews(
+      "🌐",
+      this.state.pendingGlobalEvent.headline,
+      `${(signedMag * 100).toFixed(1)}% · 이번 회차 정산 반영 예정`,
+      signedMag > 0 ? "good" : "bad"
+    );
   }
 
   // SPEC 2장 ④ 진입: POSITION 의 비공개 주문들을 일괄 체결한다.
@@ -855,14 +942,9 @@ export class GameRoom {
         co.lieCount = 0; // 발동 후 누적 리셋(SPEC 3.7)
       }
 
-      // 연구 성공 (SPEC 3.6.5): 출자에 비례한 낮은 확률 잭팟.
-      let researchDelta = 0;
-      const researchChance = BALANCE.researchBaseChance * seedRatio;
-      if (researchChance > 0 && Math.random() < researchChance) {
-        const [rlo, rhi] = BALANCE.researchBoostRange;
-        researchDelta = rlo + Math.random() * (rhi - rlo);
-        co.researchBreakthroughThisRound = true;
-      }
+      // 연구 잭팟은 이제 정산 자동 아님. 관리 페이즈에서 능동 발동됨(handleResearch).
+      // 여기서는 아무 delta 도 추가하지 않는다.
+      const researchDelta = 0;
 
       const prevPrice = co.price;
       // 합성 변동: 이벤트 + 성장보너스 + 기술 + 세무 조사 + 연구 성공. 한 번에 곱.
@@ -895,13 +977,14 @@ export class GameRoom {
           round: this.state.round,
           text: `🚨 ${co.name} 세무 조사 — 거짓 선언 누적 페널티 ${(auditDelta * 100).toFixed(1)}%`,
         });
+        this.pushNews(
+          "🚨",
+          `${co.name} 세무 조사`,
+          `거짓 선언 누적 · 주가 ${(auditDelta * 100).toFixed(1)}%`,
+          "bad"
+        );
       }
-      if (co.researchBreakthroughThisRound) {
-        this.state.log.push({
-          round: this.state.round,
-          text: `🔬 ${co.name} 연구 성공 — 극호재 +${(researchDelta * 100).toFixed(1)}%`,
-        });
-      }
+      // (연구 결과 로그는 handleResearch 발동 시점에 이미 기록됨)
     }
 
     // 3) 평균회귀 추적: 이번 회차 가장 가격 변동률(섹터 합)이 큰 섹터를 hot 으로 기록.
@@ -993,6 +1076,7 @@ export class GameRoom {
     }
     this.state.companies = {};
     this.state.auctions = [];
+    this.state.newsEvents = [];
     this.state.round = 0;
     this.state.phase = "LOBBY";
     this.state.phaseDeadline = undefined;
@@ -1056,7 +1140,7 @@ export class GameRoom {
         }
       }, 1500);
     } else if (phase === "MANAGE") {
-      // 봇은 30% 확률로 기술 업그레이드만 시도. 피벗/엑시트는 안 함.
+      // 봇: 30% 확률로 기술 업그레이드, 25% 확률로 연구(랜덤 tier).
       setTimeout(() => {
         if (this.state.phase !== "MANAGE") return;
         for (const bot of bots()) {
@@ -1066,8 +1150,14 @@ export class GameRoom {
             const cost = BALANCE.techUpgradeCost(co.techLevel);
             if (bot.cash >= cost) this.handleTechUpgrade(bot.id);
           }
+          if (Math.random() < 0.25 && !co.researchDoneThisManage) {
+            const tier = Math.floor(Math.random() * 3) as 0 | 1 | 2;
+            if (bot.cash >= BALANCE.researchTiers[tier].cost) {
+              this.handleResearch(bot.id, tier);
+            }
+          }
         }
-      }, 2000);
+      }, 2500);
     } else if (phase === "TRADE") {
       // 거래 페이즈 동안 봇이 산발적으로 매매. 5번 시도.
       const ms = BALANCE.tradeWindowSec * 1000;
@@ -1104,10 +1194,62 @@ export class GameRoom {
     }
   }
 
+  // 뉴스 이벤트 push (모든 플레이어 스냅샷에 포함되어 팝업으로 렌더).
+  private pushNews(
+    emoji: string,
+    headline: string,
+    detail: string | undefined,
+    tone: "good" | "bad" | "neutral"
+  ) {
+    this.state.newsEvents.push({
+      id: nextNewsId++,
+      timestamp: Date.now(),
+      emoji,
+      headline,
+      detail,
+      tone,
+    });
+    if (this.state.newsEvents.length > NEWS_LIMIT) {
+      this.state.newsEvents.splice(
+        0,
+        this.state.newsEvents.length - NEWS_LIMIT
+      );
+    }
+  }
+
   private clearTradeTimer() {
     if (this.tradeTimer) {
       clearTimeout(this.tradeTimer);
       this.tradeTimer = undefined;
+    }
+    this.stopMarketNoise();
+  }
+
+  // 시장 마이크로 노이즈: 거래 페이즈 동안 매 tradeNoiseIntervalMs 마다
+  // 각 회사에 ±tradeNoiseMagnitude 미만의 랜덤 흔들림 추가. 평균 0.
+  private startMarketNoise() {
+    this.stopMarketNoise();
+    this.noiseTimer = setInterval(() => {
+      if (this.state.phase !== "TRADE") return;
+      let anyChange = false;
+      for (const co of Object.values(this.state.companies)) {
+        // 평균 0, 대략 -mag~+mag 균등분포
+        const delta =
+          (Math.random() * 2 - 1) * BALANCE.tradeNoiseMagnitude;
+        const newPrice = Math.max(1, Math.round(co.price * (1 + delta)));
+        if (newPrice !== co.price) {
+          setPriceAndRecord(co, newPrice);
+          anyChange = true;
+        }
+      }
+      if (anyChange) this.broadcastSnapshot();
+    }, BALANCE.tradeNoiseIntervalMs);
+  }
+
+  private stopMarketNoise() {
+    if (this.noiseTimer) {
+      clearInterval(this.noiseTimer);
+      this.noiseTimer = undefined;
     }
   }
 

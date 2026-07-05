@@ -68,8 +68,13 @@ export interface Company {
   // 이번 회차 정산 직전 스냅샷(SETTLE 화면 비교용). 매 SETTLE 진입 시 갱신.
   prevSettlePrice?: number;
   prevSettleTrust?: number;
-  // SPEC 3.6.5 연구 성공
-  researchBreakthroughThisRound: boolean; // 이번 정산에서 연구 성공(잭팟) 발동 여부
+  // SPEC 3.6.5 연구: 관리 페이즈에서 투자 → 대성공/성공/실패.
+  // MANAGE 진입 시 false 로 리셋, 회차당 1회만 가능.
+  researchDoneThisManage: boolean;
+  // 최근 연구 결과 (UI/뉴스 팝업 표시용). null 이면 아직 연구 없음.
+  lastResearchOutcome?: "jackpot" | "success" | "fail";
+  // 하위 호환: 예전 자동 잭팟 필드. 새 시스템에선 안 씀(항상 false) 하지만 타입만 유지.
+  researchBreakthroughThisRound: boolean;
   // SPEC 3.7 세무 조사
   lieCount: number; // 누적 거짓 선언 횟수 (audit 발동 시 0으로 리셋)
   auditedThisRound: boolean; // 이번 정산에서 세무 조사 발동 여부 (UI/로그 표시용)
@@ -113,6 +118,16 @@ export interface GameState {
     minBid: number;
     topBid?: { bidderId: string; amount: number };
   }>;
+  // 시장 뉴스 이벤트 스트림 — 우측 상단 팝업 카드로 표시.
+  // 서버가 push, 클라가 최근 N개 렌더 + 오래된 것 자동 dismiss.
+  newsEvents: Array<{
+    id: number;
+    timestamp: number;
+    emoji: string;
+    headline: string;
+    detail?: string;
+    tone: "good" | "bad" | "neutral";
+  }>;
   // 이번 회차 정산에서 적용될 글로벌 이벤트 (INFO 진입 시 결정 → SETTLE 에 적용)
   pendingGlobalEvent?: { sector: Sector; magnitude: number; headline: string };
   // 평균회귀용: 직전 회차에 누적 가격 변동률이 가장 컸던 섹터(과열 응징).
@@ -151,6 +166,8 @@ export type ClientMessage =
   | { type: "declare"; declaration: Declaration }
   // 관리 페이즈: 기술 레벨 업그레이드 (레벨당 techUpgradeCost 지불)
   | { type: "techUpgrade" }
+  // 관리 페이즈: 연구 투자 (3단계 tier). 결과 즉시 적용
+  | { type: "research"; tier: 0 | 1 | 2 }
   // 관리 페이즈: 사업 전환(피벗). 새 섹터로 이동, 신뢰도 3 리셋
   | { type: "pivot"; newSector: Sector }
   // 관리 페이즈: 회사 매각 리스트업 (판매 개시)
