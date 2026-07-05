@@ -93,6 +93,8 @@ export interface PlayerState {
   pendingPosition?: Array<{ companyOwnerId: string; shares: number /* +매수 -매도 */ }>;
   // 공개: 이번 회차 선언
   declaration?: Declaration;
+  // 공개: 선언에 딸린 코멘트(모든 플레이어에게 보임). 최대 60자.
+  declarationComment?: string;
   // 공개: 이번 페이즈 입력 완료 신호(서버 조기 전환 판단용). 매 페이즈 진입 시 false.
   ready: boolean;
   // 공개: 게임 시작 시 자기 회사에 박은 창업 출자 금액(0 ~ BALANCE.seedInvestedMax).
@@ -162,8 +164,8 @@ export type ClientMessage =
     }
   // 거래 페이즈: 실시간 단건 체결 (양수=매수, 음수=매도)
   | { type: "trade"; companyOwnerId: string; shares: number }
-  // 선언 페이즈: HYPE/WARN/SILENT 1장 (보내면 자동으로 ready 처리)
-  | { type: "declare"; declaration: Declaration }
+  // 선언 페이즈: HYPE/WARN/SILENT 1장 + 코멘트(선택, 60자)
+  | { type: "declare"; declaration: Declaration; comment?: string }
   // 관리 페이즈: 기술 레벨 업그레이드 (레벨당 techUpgradeCost 지불)
   | { type: "techUpgrade" }
   // 관리 페이즈: 연구 투자 (3단계 tier). 결과 즉시 적용

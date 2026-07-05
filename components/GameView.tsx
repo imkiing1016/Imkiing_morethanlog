@@ -6,6 +6,7 @@ import { SECTORS, SECTOR_LABELS, SECTOR_MASCOTS } from "@/game/types";
 import type { ClientMessage, Phase, Sector } from "@/game/types";
 import { BALANCE } from "@/game/balance";
 import Sparkline from "./Sparkline";
+import HoldButton from "./HoldButton";
 
 const fmt = (n: number) => n.toLocaleString("ko-KR") + "원";
 
@@ -54,6 +55,11 @@ export default function GameView({
   const [positionOrders, setPositionOrders] = useState<Record<string, number>>(
     {}
   );
+  // 거래 페이즈 뷰 모드: 전체 그리드 / 선택 종목 상세.
+  const [tradeView, setTradeView] = useState<"all" | "detail">("all");
+  const [focusCompanyId, setFocusCompanyId] = useState<string | null>(null);
+  // 선언 페이즈 코멘트 (제출 전까지 로컬 유지)
+  const [declareComment, setDeclareComment] = useState("");
 
   // 거래 페이즈 카운트다운 표시용(렌더 전용, 게임 계산 아님).
   const [now, setNow] = useState(() => Date.now());
@@ -74,6 +80,7 @@ export default function GameView({
       setBizName("");
       setSeedManwon(0);
     }
+    if (state?.phase !== "DECLARE") setDeclareComment("");
   }, [state?.phase]);
 
   if (!state) return null;
@@ -644,9 +651,154 @@ export default function GameView({
         <section className="flex flex-col gap-3">
           <p className="text-sm text-neutral">
             매수/매도하면 거래량에 따라 주가가 즉시 변동합니다.
-            한 번에 {BALANCE.liveTradeStep}주씩 체결.
+            한 번에 {BALANCE.liveTradeStep}주씩 · 꾹 누르면 반복.
           </p>
-          {state.players
+          {/* 뷰 모드 토글 */}
+          <div className="flex gap-1 p-1 rounded-element border-2 border-cardEdge bg-paper">
+            <button
+              onClick={() => setTradeView("all")}
+              className={`flex-1 rounded-element px-3 py-1.5 text-sm font-medium ${
+                tradeView === "all"
+                  ? "bg-ink text-paper"
+                  : "text-neutral"
+              }`}
+            >
+              전체 종목
+            </button>
+            <button
+              onClick={() => {
+                setTradeView("detail");
+                if (!focusCompanyId) {
+                  const first = state.players.find(
+                    (p) => state.companies[p.id]
+                  )?.id;
+                  if (first) setFocusCompanyId(first);
+                }
+              }}
+              className={`flex-1 rounded-element px-3 py-1.5 text-sm font-medium ${
+                tradeView === "detail"
+                  ? "bg-ink text-paper"
+                  : "text-neutral"
+              }`}
+            >
+              상세 보기
+            </button>
+          </div>
+          {/* 상세 뷰: 종목 선택 chips + 큰 차트 */}
+          {tradeView === "detail" && (
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-1.5 overflow-x-auto pb-1">
+                {state.players
+                  .filter((p) => state.companies[p.id])
+                  .map((p) => {
+                    const co = state.companies[p.id];
+                    const sel = focusCompanyId === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => setFocusCompanyId(p.id)}
+                        className={`shrink-0 rounded-element border-2 px-3 py-1.5 text-sm flex items-center gap-1 ${sel ? "border-ink bg-ink text-paper" : "border-cardEdge bg-card"}`}
+                      >
+                        <span className="mascot text-base">
+                          {SECTOR_MASCOTS[co.sector]}
+                        </span>
+                        <span>{co.name}</span>
+                      </button>
+                    );
+                  })}
+              </div>
+              {(() => {
+                const cid = focusCompanyId;
+                if (!cid) return null;
+                const co = state.companies[cid];
+                if (!co) return null;
+                const owner = state.players.find((p) => p.id === cid);
+                const held = self?.holdings?.[cid] ?? 0;
+                const step = BALANCE.liveTradeStep;
+                const pts = co.pricePoints ?? [];
+                const start = pts[0] ?? co.price;
+                const livePct =
+                  start > 0 ? ((co.price - start) / start) * 100 : 0;
+                const isMine = cid === selfId;
+                return (
+                  <div className="rounded-card border-2 border-cardEdge bg-card p-4 flex flex-col gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-4xl">
+                        {SECTOR_MASCOTS[co.sector]}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-lg font-medium truncate">
+                          {co.name}
+                          {isMine && (
+                            <span className="ml-2 text-xs text-warning">
+                              내 회사
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-neutral">
+                          {SECTOR_LABELS[co.sector]} · Lv{co.techLevel} · ★
+                          {co.trust} · {owner?.declaration ?? "—"}
+                          {owner?.nickname && ` · ${owner.nickname}`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-3xl font-medium tabular-nums">
+                        {fmt(co.price)}
+                      </span>
+                      <span
+                        className={`text-lg tabular-nums ${livePct > 0 ? "text-success" : livePct < 0 ? "text-danger" : "text-neutral"}`}
+                      >
+                        {livePct > 0 ? "▲" : livePct < 0 ? "▼" : "─"}{" "}
+                        {Math.abs(livePct).toFixed(2)}%
+                      </span>
+                    </div>
+                    <Sparkline points={pts} width={340} height={140} />
+                    {owner?.declarationComment && (
+                      <p className="text-sm italic text-neutral rounded-element bg-paper border border-cardEdge px-3 py-2">
+                        💬 “{owner.declarationComment}”
+                      </p>
+                    )}
+                    <p className="text-xs text-neutral">
+                      보유 {held}주 · 평가액 {fmt(held * co.price)}
+                    </p>
+                    <div className="flex gap-2">
+                      <HoldButton
+                        onFire={() =>
+                          send({
+                            type: "trade",
+                            companyOwnerId: cid,
+                            shares: step,
+                          })
+                        }
+                        className="flex-1 rounded-element bg-success text-paper px-3 py-3 font-medium"
+                      >
+                        매수 +{step}
+                      </HoldButton>
+                      <HoldButton
+                        onFire={() =>
+                          send({
+                            type: "trade",
+                            companyOwnerId: cid,
+                            shares: -step,
+                          })
+                        }
+                        className="flex-1 rounded-element bg-danger text-paper px-3 py-3 font-medium"
+                      >
+                        매도 −{step}
+                      </HoldButton>
+                    </div>
+                    <p className="text-[10px] text-neutral text-center">
+                      꾹 누르면 반복 체결
+                    </p>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+          {/* 전체 뷰: 카드 그리드 */}
+          {tradeView === "all" &&
+            state.players
             .filter((other) => state.companies[other.id])
             .map((other) => {
               const co = state.companies[other.id];
@@ -661,7 +813,13 @@ export default function GameView({
                   key={other.id}
                   className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2"
                 >
-                  <div className="flex items-center gap-3">
+                  <div
+                    className="flex items-center gap-3 cursor-pointer"
+                    onClick={() => {
+                      setFocusCompanyId(other.id);
+                      setTradeView("detail");
+                    }}
+                  >
                     <span className="mascot">{SECTOR_MASCOTS[co.sector]}</span>
                     <div className="flex-1">
                       <p className="font-medium">
@@ -694,10 +852,15 @@ export default function GameView({
                     </div>
                   </div>
                   <Sparkline points={pts} width={330} height={42} />
+                  {other.declarationComment && (
+                    <p className="text-xs italic text-neutral">
+                      💬 “{other.declarationComment}” — {other.nickname}
+                    </p>
+                  )}
                   <p className="text-xs text-neutral">보유 {held}주</p>
                   <div className="flex gap-2">
-                    <button
-                      onClick={() =>
+                    <HoldButton
+                      onFire={() =>
                         send({
                           type: "trade",
                           companyOwnerId: other.id,
@@ -707,9 +870,9 @@ export default function GameView({
                       className="flex-1 rounded-element bg-success text-paper px-3 py-2.5 font-medium text-sm"
                     >
                       매수 +{step}
-                    </button>
-                    <button
-                      onClick={() =>
+                    </HoldButton>
+                    <HoldButton
+                      onFire={() =>
                         send({
                           type: "trade",
                           companyOwnerId: other.id,
@@ -719,8 +882,11 @@ export default function GameView({
                       className="flex-1 rounded-element bg-danger text-paper px-3 py-2.5 font-medium text-sm"
                     >
                       매도 −{step}
-                    </button>
+                    </HoldButton>
                   </div>
+                  <p className="text-[10px] text-neutral text-center -mt-1">
+                    꾹 누르면 반복 체결
+                  </p>
                 </div>
               );
             })}
@@ -877,7 +1043,13 @@ export default function GameView({
             return (
               <button
                 key={d}
-                onClick={() => send({ type: "declare", declaration: d })}
+                onClick={() =>
+                  send({
+                    type: "declare",
+                    declaration: d,
+                    comment: declareComment.trim() || undefined,
+                  })
+                }
                 className={`rounded-element border px-3 py-3 text-left ${
                   selected
                     ? "border-warning bg-warning/10"
@@ -889,6 +1061,76 @@ export default function GameView({
               </button>
             );
           })}
+
+          {/* 코멘트 입력 (모든 플레이어에게 공개) */}
+          <div className="flex flex-col gap-1">
+            <label htmlFor="declaim" className="text-xs text-neutral">
+              💬 코멘트 (선택 · 최대 60자 · 모두에게 공개)
+            </label>
+            <input
+              id="declaim"
+              value={declareComment}
+              onChange={(e) => setDeclareComment(e.target.value.slice(0, 60))}
+              placeholder="예) 진짜 대박이다, 이번엔 확실함…"
+              className="rounded-element border-2 border-cardEdge bg-card px-3 py-2 text-sm"
+            />
+            {self?.declaration && (
+              <p className="text-xs text-neutral">
+                선언 이미 완료. 코멘트 수정하려면 카드를 다시 눌러 재제출.
+              </p>
+            )}
+          </div>
+
+          {/* 다른 플레이어의 선언 + 코멘트 실시간 표시 */}
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-neutral">
+              💬 다른 사람 선언 / 코멘트
+            </p>
+            {state.players
+              .filter((p) => p.declaration && p.id !== selfId)
+              .map((p) => {
+                const co = state.companies[p.id];
+                const badgeCls =
+                  p.declaration === "HYPE"
+                    ? "text-success"
+                    : p.declaration === "WARN"
+                      ? "text-danger"
+                      : "text-neutral";
+                return (
+                  <div
+                    key={p.id}
+                    className="rounded-element border-2 border-cardEdge bg-card p-2 flex flex-col gap-1"
+                  >
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="flex items-center gap-1.5">
+                        {co && (
+                          <span className="mascot text-lg">
+                            {SECTOR_MASCOTS[co.sector]}
+                          </span>
+                        )}
+                        {p.isBot && "🤖 "}
+                        <span className="font-medium">{p.nickname}</span>
+                      </span>
+                      <span className={`text-xs font-medium ${badgeCls}`}>
+                        {p.declaration}
+                      </span>
+                    </div>
+                    {p.declarationComment && (
+                      <p className="text-xs pl-1">
+                        “{p.declarationComment}”
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            {state.players.filter((p) => p.declaration && p.id !== selfId)
+              .length === 0 && (
+              <p className="text-xs text-neutral italic">
+                아직 다른 플레이어의 선언이 없어요.
+              </p>
+            )}
+          </div>
+
           <p className="text-xs text-neutral">
             선언 완료 {readyCount} / {connected.length}
           </p>
@@ -897,59 +1139,105 @@ export default function GameView({
         <section className="flex flex-col gap-3">
           {isInfo && self?.privateInfo && (
             <>
-              <div className="rounded-card border border-danger/30 bg-danger/5 p-4">
-                <p className="text-xs text-neutral">
-                  회차 {state.round} 정산 · 내 회사 정보 (비공개)
-                </p>
-                <p
-                  className={`text-2xl font-medium ${
-                    self.privateInfo === "BULLISH"
-                      ? "text-success"
-                      : "text-danger"
-                  }`}
-                >
-                  {self.privateInfo === "BULLISH"
-                    ? "호재 ▲ 상승 예고"
-                    : "악재 ▼ 하락 예고"}
-                </p>
-                <p className="text-xs text-neutral">
-                  강도는 비공개 · 이 정보는 나만 봅니다
-                </p>
-              </div>
-
-              {/* 산 정보 표시 */}
-              {self.purchasedInfos && self.purchasedInfos.length > 0 && (
-                <div className="rounded-card border border-neutral/20 p-3">
-                  <p className="text-xs text-neutral">구매한 정보</p>
-                  <ul className="flex flex-col gap-1 mt-1">
-                    {self.purchasedInfos.map((info) => {
-                      const co = state.companies[info.ownerId];
-                      if (!co) return null;
-                      return (
-                        <li
-                          key={info.ownerId}
-                          className="flex justify-between text-sm"
-                        >
-                          <span>
-                            {co.name} ({SECTOR_LABELS[co.sector]})
-                          </span>
-                          <span
-                            className={
-                              info.direction === "BULLISH"
-                                ? "text-success"
-                                : "text-danger"
-                            }
+              {/* 정보 카드 캐러셀: 가로 스와이프, 한 번에 한 장씩 */}
+              {(() => {
+                // [내 정보, 구매한 정보들] 을 하나의 카드 리스트로 통합
+                const cards: Array<{
+                  key: string;
+                  ownerId: string;
+                  isMine: boolean;
+                  direction: "BULLISH" | "BEARISH";
+                }> = [
+                  {
+                    key: `self-${selfId}`,
+                    ownerId: selfId ?? "",
+                    isMine: true,
+                    direction: self.privateInfo,
+                  },
+                  ...(self.purchasedInfos ?? []).map((info) => ({
+                    key: `p-${info.ownerId}`,
+                    ownerId: info.ownerId,
+                    isMine: false,
+                    direction: info.direction,
+                  })),
+                ];
+                return (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex justify-between items-baseline">
+                      <p className="text-sm font-medium">
+                        📇 이번 회차 정보 카드
+                      </p>
+                      <p className="text-xs text-neutral">
+                        {cards.length}장 · 좌우로 넘겨보세요
+                      </p>
+                    </div>
+                    <div
+                      className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2"
+                      style={{ scrollbarWidth: "none" }}
+                    >
+                      {cards.map((card) => {
+                        const co = state.companies[card.ownerId];
+                        const isUp = card.direction === "BULLISH";
+                        return (
+                          <div
+                            key={card.key}
+                            className={`shrink-0 basis-full snap-center rounded-card border-2 p-4 flex flex-col gap-3 ${
+                              isUp
+                                ? "border-success bg-success/10"
+                                : "border-danger bg-danger/10"
+                            }`}
                           >
-                            {info.direction === "BULLISH"
-                              ? "호재 ▲"
-                              : "악재 ▼"}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-neutral">
+                                {card.isMine ? "🔒 내 회사 정보" : "💰 구매한 정보"}
+                              </span>
+                              <span className="text-xs text-neutral">
+                                회차 {state.round} 정산
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-5xl">
+                                {co ? SECTOR_MASCOTS[co.sector] : "❓"}
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium truncate">
+                                  {co?.name ?? "—"}
+                                </p>
+                                <p className="text-xs text-neutral">
+                                  {co ? SECTOR_LABELS[co.sector] : ""}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-center py-2">
+                              <p
+                                className={`text-3xl font-medium ${
+                                  isUp ? "text-success" : "text-danger"
+                                }`}
+                              >
+                                {isUp
+                                  ? "호재 ▲ 상승 예고"
+                                  : "악재 ▼ 하락 예고"}
+                              </p>
+                            </div>
+                            <p className="text-xs text-neutral text-center">
+                              강도는 비공개 · 나만 볼 수 있는 정보
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* 페이지 도트 */}
+                    <div className="flex justify-center gap-1.5">
+                      {cards.map((c) => (
+                        <span
+                          key={c.key}
+                          className="w-1.5 h-1.5 rounded-full bg-neutral/40"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* 정보 구매 버튼들 */}
               <div className="rounded-card border border-neutral/20 p-3 flex flex-col gap-2">
@@ -979,8 +1267,11 @@ export default function GameView({
                         }
                         className="rounded-element border border-neutral/30 px-3 py-2 text-sm text-left flex justify-between items-center disabled:opacity-40"
                       >
-                        <span>
-                          {co.name}{" "}
+                        <span className="flex items-center gap-1.5">
+                          <span className="mascot text-lg">
+                            {SECTOR_MASCOTS[co.sector]}
+                          </span>
+                          {co.name}
                           <span className="text-neutral">
                             ({SECTOR_LABELS[co.sector]})
                           </span>

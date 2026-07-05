@@ -176,7 +176,7 @@ export class GameRoom {
         this.handleTrade(id, msg.companyOwnerId, msg.shares);
         break;
       case "declare":
-        this.handleDeclare(id, msg.declaration);
+        this.handleDeclare(id, msg.declaration, msg.comment);
         break;
       case "techUpgrade":
         this.handleTechUpgrade(id);
@@ -512,8 +512,12 @@ export class GameRoom {
     this.state.auctions = [];
   }
 
-  // SPEC 2장 ③: HYPE/WARN/SILENT 1장 선언 + 준비 처리.
-  private handleDeclare(id: string, declaration: Declaration) {
+  // SPEC 2장 ③: HYPE/WARN/SILENT 1장 선언 + 코멘트(선택) + 준비 처리.
+  private handleDeclare(
+    id: string,
+    declaration: Declaration,
+    comment?: string
+  ) {
     if (this.state.phase !== "DECLARE") return;
     const player = this.state.players.find((p) => p.id === id);
     if (!player) return;
@@ -525,6 +529,9 @@ export class GameRoom {
       return;
     }
     player.declaration = declaration;
+    // 코멘트 정리(trim + 60자 이내). 빈 문자열은 undefined 로.
+    const clean = (comment ?? "").trim().slice(0, 60);
+    player.declarationComment = clean.length > 0 ? clean : undefined;
     player.ready = true;
     if (!this.tryAdvanceOnReady()) this.broadcastSnapshot();
   }
@@ -1188,6 +1195,7 @@ export class GameRoom {
   private resetRoundScopedFields() {
     for (const p of this.state.players) {
       p.declaration = undefined;
+      p.declarationComment = undefined;
       p.privateInfo = undefined;
       p.pendingPosition = undefined;
       p.purchasedInfos = [];
