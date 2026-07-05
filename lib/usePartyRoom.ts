@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import PartySocket from "partysocket";
 import { useGameStore } from "./store";
+import { useDebugLog, summarize } from "./debugLog";
 import type { ClientMessage, ServerMessage } from "@/game/types";
 
 // 배포된 실시간 서버 호스트(Render). 환경변수가 없거나 잘못돼도 붙도록 기본값으로 둔다.
@@ -48,9 +49,13 @@ export function usePartyRoom(roomCode: string, nickname: string) {
   useEffect(() => {
     if (!roomCode || !nickname) return;
 
+    const host = resolveRealtimeHost();
+    const dbg = useDebugLog.getState();
     setStatus("connecting");
+    dbg.push({ kind: "status", text: `연결 중… (${host})` });
+
     const socket = new PartySocket({
-      host: resolveRealtimeHost(),
+      host,
       room: roomCode,
       id: connIdRef.current, // 안정적 식별자 → 재접속 시 동일 플레이어
     });
@@ -58,22 +63,41 @@ export function usePartyRoom(roomCode: string, nickname: string) {
 
     socket.addEventListener("open", () => {
       setStatus("connected");
+      useDebugLog.getState().push({ kind: "status", text: "🟢 연결됨" });
       const join: ClientMessage = { type: "join", nickname };
       socket.send(JSON.stringify(join));
+      useDebugLog.getState().push({
+        kind: "send",
+        text: `→ join`,
+        detail: summarize(join),
+      });
     });
 
     // partysocket 은 자동 재연결한다. 끊기면 재연결 시도 동안 connecting 으로 표시.
-    socket.addEventListener("close", () => setStatus("connecting"));
-    socket.addEventListener("error", () => setStatus("connecting"));
+    socket.addEventListener("close", () => {
+      setStatus("connecting");
+      useDebugLog.getState().push({ kind: "status", text: "🟡 연결 끊김 · 재시도 중" });
+    });
+    socket.addEventListener("error", (e) => {
+      setStatus("connecting");
+      useDebugLog.getState().push({ kind: "error", text: "❌ WebSocket 에러", detail: String((e as unknown as Event & {message?: string})?.message ?? e) });
+    });
 
     socket.addEventListener("message", (event) => {
       try {
         const msg = JSON.parse(event.data as string) as ServerMessage;
         if (msg.type === "snapshot") {
           setSnapshot(msg.state, msg.selfId);
+          useDebugLog.getState().push({
+            kind: "recv",
+            text: `← snapshot ${msg.state.phase} r${msg.state.round}`,
+            detail: `players=${msg.state.players.length} companies=${Object.keys(msg.state.companies).length}`,
+          });
         }
-      } catch {
-        // 무시: 알 수 없는 메시지
+      } catch (err) {
+        useDebugLog
+          .getState()
+          .push({ kind: "error", text: "메시지 파싱 실패", detail: String(err) });
       }
     });
 
@@ -84,8 +108,39 @@ export function usePartyRoom(roomCode: string, nickname: string) {
     };
   }, [roomCode, nickname, setSnapshot, setStatus, reset]);
 
+  // 모든 클라 → 서버 메시지는 이 함수를 지난다.
+  // 여기서 debug 로그를 push 하므로 UI의 모든 버튼 클릭이 자동으로 기록된다.
   function send(message: ClientMessage) {
-    socketRef.current?.send(JSON.stringify(message));
+    const socket = socketRef.current;
+    const dbg = useDebugLog.getState();
+    if (!socket) {
+      dbg.push({
+        kind: "error",
+        text: `→ ${message.type} 전송 실패 · 소켓 없음`,
+      });
+      return;
+    }
+    if (socket.readyState !== 1 /* OPEN */) {
+      dbg.push({
+        kind: "error",
+        text: `→ ${message.type} 전송 실패 · 연결 안 됨 (state=${socket.readyState})`,
+      });
+      return;
+    }
+    try {
+      socket.send(JSON.stringify(message));
+      dbg.push({
+        kind: "send",
+        text: `→ ${message.type}`,
+        detail: summarize(message),
+      });
+    } catch (err) {
+      dbg.push({
+        kind: "error",
+        text: `→ ${message.type} 전송 실패`,
+        detail: String(err),
+      });
+    }
   }
 
   return { send };

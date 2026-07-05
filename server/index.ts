@@ -12,10 +12,44 @@ const rooms = new Map<string, GameRoom>();
 const emptyTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const EMPTY_ROOM_TTL_MS = 5 * 60 * 1000; // 빈 방은 5분 뒤 메모리에서 정리
 
+// 진단용: 이 서버 빌드가 어떤 기능을 지원하는지 노출.
+// 새 커밋 배포 후 여기 항목이 늘어야 클라에서 그 메시지가 통한다.
+const SUPPORTED_MESSAGES = [
+  "join",
+  "start",
+  "addBot",
+  "setup",
+  "buyInfo",
+  "submitPosition",
+  "trade",
+  "declare",
+  "techUpgrade",
+  "pivot",
+  "listExit",
+  "bidExit",
+  "rematch",
+  "ready",
+];
+const STARTED_AT = new Date().toISOString();
+
 const server = http.createServer((req, res) => {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  if (url.pathname === "/version") {
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    res.end(
+      JSON.stringify({
+        ok: true,
+        supported: SUPPORTED_MESSAGES,
+        startedAt: STARTED_AT,
+      })
+    );
+    return;
+  }
   // 헬스체크(Render 등) + 안내 응답.
   res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
-  res.end("bluffing-stock-game realtime server: ok");
+  res.end(
+    `bluffing-stock-game realtime server: ok\nsupports: ${SUPPORTED_MESSAGES.join(", ")}`
+  );
 });
 
 const wss = new WebSocketServer({ noServer: true });
