@@ -16,6 +16,9 @@ export const BALANCE = {
   priceImpactCoef: 0.2, // 거래량 → 주가 임팩트 계수 (SPEC 2장 ④)
   liveTradeStep: 10, // TRADE +/- 버튼 한 번에 거래되는 주식 수
   globalEventMagnitudeRange: [0.1, 0.25] as const, // 글로벌 이벤트 강도 (SPEC 3.6)
+  techGrowthPerLevel: 0.01, // 기술 레벨당 정산 시 기본 주가 상승률 (+1%/lvl, SPEC 3.3)
+  manageWindowSec: 30, // 관리 페이즈 타이머 (SPEC 3.3~3.5)
+  minBidIncrement: 100_000, // 엑시트 경매 최소 입찰 증가 폭
   maxSelfOwnership: 0.6, // 자기 회사 지분 상한
   trustInfluence: (t: number) => 0.4 + 0.12 * t,
   eventMagnitudeRange: [0.15, 0.4] as const, // 강도 랜덤 범위

@@ -283,11 +283,105 @@ export default function GameView({
           </p>
         </section>
       ) : isEnded ? (
-        <section className="rounded-card border border-neutral/20 p-4">
-          <p className="font-medium">게임 종료</p>
-          <p className="text-sm text-neutral">
-            마지막 회차까지 순환을 마쳤습니다. (승리화면은 M7)
-          </p>
+        <section className="flex flex-col gap-4">
+          {(() => {
+            const rankings = state.finalRankings ?? [];
+            const winner = rankings[0];
+            const podium = rankings.slice(0, 3);
+            const medals = ["🥇", "🥈", "🥉"];
+            const isHost = selfId === state.hostId;
+            return (
+              <>
+                <div className="rounded-card border-2 border-warning bg-accentSoft p-4 text-center">
+                  <p className="text-xs text-neutral">🏆 최종 승자</p>
+                  <p className="text-3xl font-medium text-warning">
+                    {winner?.nickname ?? "—"}
+                  </p>
+                  <p className="text-lg tabular-nums font-medium">
+                    총자산 {fmt(winner?.totalAssets ?? 0)}
+                  </p>
+                </div>
+
+                {podium.length > 1 && (
+                  <div className="grid grid-cols-3 gap-2 items-end">
+                    {[1, 0, 2].map((idx) => {
+                      const p = podium[idx];
+                      if (!p) return <div key={idx} />;
+                      const heights = { 0: "h-24", 1: "h-16", 2: "h-12" };
+                      return (
+                        <div key={p.playerId} className="flex flex-col items-center gap-1">
+                          <div className="text-2xl">{medals[idx]}</div>
+                          <p className="text-sm font-medium text-center">
+                            {p.nickname}
+                          </p>
+                          <p className="text-xs text-neutral tabular-nums">
+                            {fmt(p.totalAssets)}
+                          </p>
+                          <div
+                            className={`w-full rounded-t-element bg-cardEdge ${heights[idx as 0 | 1 | 2]}`}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <p className="text-sm text-neutral">📊 최종 순위</p>
+                <ul className="flex flex-col gap-2">
+                  {rankings.map((r, i) => {
+                    const p = state.players.find((x) => x.id === r.playerId);
+                    const co = state.companies[r.playerId];
+                    const isMe = r.playerId === selfId;
+                    return (
+                      <li
+                        key={r.playerId}
+                        className={`rounded-card border-2 p-3 ${isMe ? "border-warning bg-accentSoft" : "border-cardEdge bg-card"}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium flex items-center gap-2">
+                            <span className="text-lg">{i + 1}위</span>
+                            {p?.isBot && "🤖 "}
+                            <span>{r.nickname}</span>
+                            {isMe && (
+                              <span className="text-xs text-warning">(나)</span>
+                            )}
+                            {co && (
+                              <span className="mascot">
+                                {SECTOR_MASCOTS[co.sector]}
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-lg font-medium tabular-nums">
+                            {fmt(r.totalAssets)}
+                          </span>
+                        </div>
+                        <div className="text-xs text-neutral flex gap-2 flex-wrap mt-1">
+                          <span>현금 {fmt(r.cash)}</span>
+                          <span>· 보유주식 {fmt(r.stocksValue)}</span>
+                          {r.ownCompanyValue > 0 && (
+                            <span>· 내 회사 {fmt(r.ownCompanyValue)}</span>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                {isHost ? (
+                  <button
+                    onClick={() => send({ type: "rematch" })}
+                    className="rounded-element bg-success px-4 py-3 text-paper font-medium"
+                  >
+                    🔄 리매치 (같은 인원으로 다시)
+                  </button>
+                ) : (
+                  <p className="text-sm text-neutral">
+                    호스트가 리매치를 시작할 수 있어요.
+                  </p>
+                )}
+              </>
+            );
+          })()}
         </section>
       ) : isTrade ? (
         <section className="flex flex-col gap-3">

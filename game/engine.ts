@@ -106,6 +106,7 @@ export class GameRoom {
       hostId: "",
       players: [],
       companies: {},
+      auctions: [],
       log: [],
     };
   }
@@ -172,6 +173,9 @@ export class GameRoom {
         break;
       case "declare":
         this.handleDeclare(id, msg.declaration);
+        break;
+      case "rematch":
+        this.handleRematch(id);
         break;
       case "ready":
         this.handleReady(id);
@@ -755,7 +759,67 @@ export class GameRoom {
     this.clearTradeTimer();
     this.state.phase = "ENDED";
     this.state.phaseDeadline = undefined;
+    this.state.finalRankings = this.computeFinalRankings();
     this.state.log.push({ round: this.state.round, text: "게임 종료" });
+    this.broadcastSnapshot();
+  }
+
+  // 총자산 = 현금 + 보유 주식 평가액 + 내 회사 미보유 지분 평가액 (SPEC 1장)
+  private computeFinalRankings() {
+    const rows = this.state.players.map((p) => {
+      const cash = p.cash;
+      let stocksValue = 0;
+      for (const [cid, n] of Object.entries(p.holdings)) {
+        const co = this.state.companies[cid];
+        if (co) stocksValue += n * co.price;
+      }
+      let ownCompanyValue = 0;
+      const myCo = this.state.companies[p.id];
+      if (myCo) {
+        const totalHeld = this.state.players.reduce(
+          (s, other) => s + (other.holdings[p.id] ?? 0),
+          0
+        );
+        const unowned = Math.max(0, myCo.sharesOutstanding - totalHeld);
+        ownCompanyValue = unowned * myCo.price;
+      }
+      const totalAssets = cash + stocksValue + ownCompanyValue;
+      return {
+        playerId: p.id,
+        nickname: p.nickname,
+        totalAssets,
+        cash,
+        stocksValue,
+        ownCompanyValue,
+      };
+    });
+    rows.sort((a, b) => b.totalAssets - a.totalAssets);
+    return rows;
+  }
+
+  // 리매치: 호스트만, ENDED 상태에서 같은 인원으로 로비 복귀. (SPEC 6장 M7)
+  private handleRematch(id: string) {
+    if (id !== this.state.hostId) return;
+    if (this.state.phase !== "ENDED") return;
+    for (const p of this.state.players) {
+      p.cash = 0;
+      p.holdings = {};
+      p.ready = false;
+      p.declaration = undefined;
+      p.privateInfo = undefined;
+      p.pendingPosition = undefined;
+      p.seedInvested = 0;
+      p.purchasedInfos = [];
+    }
+    this.state.companies = {};
+    this.state.auctions = [];
+    this.state.round = 0;
+    this.state.phase = "LOBBY";
+    this.state.phaseDeadline = undefined;
+    this.state.pendingGlobalEvent = undefined;
+    this.state.lastHotSector = undefined;
+    this.state.finalRankings = undefined;
+    this.state.log = [{ round: 0, text: "리매치 준비" }];
     this.broadcastSnapshot();
   }
 
