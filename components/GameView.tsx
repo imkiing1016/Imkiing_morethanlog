@@ -20,7 +20,7 @@ const PHASE_LABEL: Record<Phase, string> = {
   DECLARE: "선언",
   TRADE: "거래",
   SETTLE: "정산",
-  MANAGE: "관리",
+  MANAGE: "관리 페이즈",
   ENDED: "종료",
 };
 
@@ -33,7 +33,7 @@ const PHASE_ACCENT: Record<Phase, string> = {
   DECLARE: "text-warning",
   TRADE: "text-success",
   SETTLE: "text-info",
-  MANAGE: "text-neutral",
+  MANAGE: "text-warning",
   ENDED: "text-neutral",
 };
 
@@ -104,12 +104,13 @@ export default function GameView({
   const isDeclare = state.phase === "DECLARE";
   const isSettle = state.phase === "SETTLE";
   const isTrade = state.phase === "TRADE";
+  const isManage = state.phase === "MANAGE";
   const isEnded = state.phase === "ENDED";
   const connected = state.players.filter((p) => p.connected);
   const readyCount = connected.filter((p) => p.ready).length;
 
   const secondsLeft =
-    isTrade && state.phaseDeadline
+    (isTrade || isManage) && state.phaseDeadline
       ? Math.max(0, Math.ceil((state.phaseDeadline - now) / 1000))
       : null;
 
@@ -382,6 +383,179 @@ export default function GameView({
               </>
             );
           })()}
+        </section>
+      ) : isManage ? (
+        <section className="flex flex-col gap-3">
+          <p className="text-sm text-neutral">
+            30초 안에 회사를 관리할 수 있어요. 기술 업그레이드, 사업 전환, 회사 매각.
+          </p>
+
+          {myCompany && (
+            <div className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <span className="mascot">{SECTOR_MASCOTS[myCompany.sector]}</span>
+                <div className="flex-1">
+                  <p className="font-medium">{myCompany.name}</p>
+                  <p className="text-xs text-neutral">
+                    {SECTOR_LABELS[myCompany.sector]} · Lv.{myCompany.techLevel} ·
+                    ★{myCompany.trust}
+                  </p>
+                </div>
+                <span className="tabular-nums text-sm">{fmt(myCompany.price)}</span>
+              </div>
+
+              {/* 기술 업그레이드 */}
+              {(() => {
+                const cost = BALANCE.techUpgradeCost(myCompany.techLevel);
+                const maxed = myCompany.techLevel >= 5;
+                const affordable = (self?.cash ?? 0) >= cost;
+                return (
+                  <button
+                    disabled={maxed || !affordable}
+                    onClick={() => send({ type: "techUpgrade" })}
+                    className="rounded-element border-2 border-cardEdge bg-card px-3 py-2 text-left flex justify-between items-center disabled:opacity-40"
+                  >
+                    <span>
+                      🔧 기술 업그레이드 Lv.{myCompany.techLevel} →{" "}
+                      {Math.min(5, myCompany.techLevel + 1)}
+                      <span className="block text-xs text-neutral">
+                        정산 시 +{((myCompany.techLevel + 1) * BALANCE.techGrowthPerLevel * 100).toFixed(1)}%/회차
+                      </span>
+                    </span>
+                    <span className="text-sm text-danger tabular-nums">
+                      {maxed ? "최대" : `−${fmt(cost)}`}
+                    </span>
+                  </button>
+                );
+              })()}
+
+              {/* 피벗 */}
+              {(() => {
+                const marketCap = myCompany.price * myCompany.sharesOutstanding;
+                const cost = Math.floor(marketCap * BALANCE.pivotCostRate);
+                const affordable = (self?.cash ?? 0) >= cost;
+                return (
+                  <details className="rounded-element border-2 border-cardEdge bg-card px-3 py-2">
+                    <summary className="cursor-pointer flex justify-between items-center">
+                      <span>
+                        🔀 사업 전환 (피벗)
+                        <span className="block text-xs text-neutral">
+                          새 섹터 + 신뢰도 3 리셋
+                        </span>
+                      </span>
+                      <span className="text-sm text-danger tabular-nums">
+                        −{fmt(cost)}
+                      </span>
+                    </summary>
+                    <div className="grid grid-cols-2 gap-2 mt-3">
+                      {SECTORS.filter((s) => s !== myCompany.sector).map((s) => (
+                        <button
+                          key={s}
+                          disabled={!affordable}
+                          onClick={() => send({ type: "pivot", newSector: s })}
+                          className="rounded-element border-2 border-cardEdge bg-paper px-2 py-2 text-sm flex items-center gap-1 disabled:opacity-40"
+                        >
+                          <span className="mascot text-lg">{SECTOR_MASCOTS[s]}</span>
+                          <span>{SECTOR_LABELS[s]}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </details>
+                );
+              })()}
+
+              {/* 매각 */}
+              {(() => {
+                const marketCap = myCompany.price * myCompany.sharesOutstanding;
+                const minBid = Math.floor(
+                  marketCap * BALANCE.exitMinPriceRate(myCompany.trust)
+                );
+                const listed = state.auctions.some((a) => a.companyOwnerId === selfId);
+                return (
+                  <button
+                    disabled={listed}
+                    onClick={() => send({ type: "listExit" })}
+                    className={`rounded-element border-2 px-3 py-2 text-left flex justify-between items-center disabled:opacity-40 ${listed ? "border-warning bg-accentSoft" : "border-cardEdge bg-card"}`}
+                  >
+                    <span>
+                      💼 회사 매각 (엑시트)
+                      <span className="block text-xs text-neutral">
+                        {listed ? "매각 중 · 낙찰 대기" : `최소가 ${fmt(minBid)}`}
+                      </span>
+                    </span>
+                    <span className="text-sm text-neutral">
+                      {listed ? "리스트됨" : "매각 개시"}
+                    </span>
+                  </button>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* 다른 회사 경매 목록 */}
+          {state.auctions.length > 0 && (
+            <>
+              <p className="text-sm text-neutral">🔨 진행 중인 경매</p>
+              {state.auctions.map((a) => {
+                const co = state.companies[a.companyOwnerId];
+                if (!co) return null;
+                const isMine = a.companyOwnerId === selfId;
+                const top = a.topBid;
+                const nextBid = Math.max(
+                  a.minBid,
+                  (top?.amount ?? 0) + BALANCE.minBidIncrement
+                );
+                const affordable = (self?.cash ?? 0) >= nextBid;
+                return (
+                  <div
+                    key={a.companyOwnerId}
+                    className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="mascot">{SECTOR_MASCOTS[co.sector]}</span>
+                      <div className="flex-1">
+                        <p className="font-medium">{co.name}</p>
+                        <p className="text-xs text-neutral">
+                          {SECTOR_LABELS[co.sector]} · 최소가 {fmt(a.minBid)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-sm">
+                      현재 최고가:{" "}
+                      <span className="font-medium tabular-nums">
+                        {top ? fmt(top.amount) : "—"}
+                      </span>
+                      {top && (
+                        <span className="text-neutral">
+                          {" "}
+                          ({state.players.find((p) => p.id === top.bidderId)?.nickname})
+                        </span>
+                      )}
+                    </div>
+                    {!isMine && (
+                      <button
+                        disabled={!affordable}
+                        onClick={() =>
+                          send({
+                            type: "bidExit",
+                            targetOwnerId: a.companyOwnerId,
+                            amount: nextBid,
+                          })
+                        }
+                        className="rounded-element bg-warning text-ink px-3 py-2 font-medium text-sm disabled:opacity-40"
+                      >
+                        🔨 입찰 {fmt(nextBid)}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          <p className="text-xs text-neutral">
+            현금 {fmt(self?.cash ?? 0)} · 시간이 끝나면 자동으로 다음 회차
+          </p>
         </section>
       ) : isTrade ? (
         <section className="flex flex-col gap-3">

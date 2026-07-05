@@ -174,6 +174,18 @@ export class GameRoom {
       case "declare":
         this.handleDeclare(id, msg.declaration);
         break;
+      case "techUpgrade":
+        this.handleTechUpgrade(id);
+        break;
+      case "pivot":
+        this.handlePivot(id, msg.newSector);
+        break;
+      case "listExit":
+        this.handleListExit(id);
+        break;
+      case "bidExit":
+        this.handleBidExit(id, msg.targetOwnerId, msg.amount);
+        break;
       case "rematch":
         this.handleRematch(id);
         break;
@@ -286,6 +298,147 @@ export class GameRoom {
     // 주가 임팩트: +매수면 ↑, -매도면 ↓.
     setPriceAndRecord(co, applyImpact(co.price, n, co.sharesOutstanding));
     this.broadcastSnapshot();
+  }
+
+  // SPEC 3.3 관리 페이즈: 기술 레벨 업그레이드. 회차당 1회, 최대 레벨 5.
+  private handleTechUpgrade(id: string) {
+    if (this.state.phase !== "MANAGE") return;
+    const player = this.state.players.find((p) => p.id === id);
+    if (!player) return;
+    const co = this.state.companies[id];
+    if (!co) return;
+    if (co.techLevel >= 5) return;
+    const cost = BALANCE.techUpgradeCost(co.techLevel);
+    if (player.cash < cost) return;
+    player.cash -= cost;
+    co.techLevel += 1;
+    this.state.log.push({
+      round: this.state.round,
+      text: `🔧 ${co.name} 기술 Lv.${co.techLevel} 업그레이드 (−${cost.toLocaleString()}원)`,
+    });
+    this.broadcastSnapshot();
+  }
+
+  // SPEC 3.4 관리 페이즈: 사업 전환. 시장가액의 30% 비용, 신뢰도 3 리셋.
+  private handlePivot(id: string, newSector: Sector) {
+    if (this.state.phase !== "MANAGE") return;
+    const player = this.state.players.find((p) => p.id === id);
+    if (!player) return;
+    const co = this.state.companies[id];
+    if (!co) return;
+    if (!SECTORS.includes(newSector)) return;
+    if (co.sector === newSector) return; // 같은 섹터 불가
+    const marketCap = co.price * co.sharesOutstanding;
+    const cost = Math.floor(marketCap * BALANCE.pivotCostRate);
+    if (player.cash < cost) return;
+    player.cash -= cost;
+    co.sector = newSector;
+    co.trust = BALANCE.startingTrust;
+    co.lieCount = 0;
+    this.state.log.push({
+      round: this.state.round,
+      text: `🔀 ${co.name} 사업 전환 → ${newSector} (−${cost.toLocaleString()}원, 신뢰도 리셋)`,
+    });
+    this.broadcastSnapshot();
+  }
+
+  // SPEC 3.5 관리 페이즈: 회사 매각 리스트업. 판매자만, 회사당 1건.
+  private handleListExit(id: string) {
+    if (this.state.phase !== "MANAGE") return;
+    const co = this.state.companies[id];
+    if (!co) return;
+    // 이미 리스팅된 회사인지 체크.
+    if (this.state.auctions.some((a) => a.companyOwnerId === id)) return;
+    // 최소가 = 시장가 × (0.8 + 0.08 × trust) (SPEC 3.5)
+    const marketCap = co.price * co.sharesOutstanding;
+    const minBid = Math.floor(marketCap * BALANCE.exitMinPriceRate(co.trust));
+    this.state.auctions.push({ companyOwnerId: id, minBid });
+    this.state.log.push({
+      round: this.state.round,
+      text: `💼 ${co.name} 매각 개시 (최소가 ${minBid.toLocaleString()}원)`,
+    });
+    this.broadcastSnapshot();
+  }
+
+  // SPEC 3.5 관리 페이즈: 경매 입찰. 자기 회사에는 입찰 못 함.
+  private handleBidExit(id: string, targetOwnerId: string, amount: number) {
+    if (this.state.phase !== "MANAGE") return;
+    if (id === targetOwnerId) return; // 본인 회사에 입찰 못 함
+    const bidder = this.state.players.find((p) => p.id === id);
+    if (!bidder) return;
+    const auction = this.state.auctions.find(
+      (a) => a.companyOwnerId === targetOwnerId
+    );
+    if (!auction) return;
+    const bid = Math.trunc(Number(amount) || 0);
+    if (bid < auction.minBid) return;
+    const topBid = auction.topBid?.amount ?? 0;
+    if (bid < topBid + BALANCE.minBidIncrement) return;
+    if (bidder.cash < bid) return; // 현금 체크(체결 시점에도 재확인)
+    auction.topBid = { bidderId: id, amount: bid };
+    this.state.log.push({
+      round: this.state.round,
+      text: `🔨 ${bidder.nickname} → ${this.state.companies[targetOwnerId]?.name} 입찰 ${bid.toLocaleString()}원`,
+    });
+    this.broadcastSnapshot();
+  }
+
+  // MANAGE 종료 시 남아있는 경매 낙찰 처리.
+  private resolveAuctions() {
+    for (const auction of this.state.auctions) {
+      const co = this.state.companies[auction.companyOwnerId];
+      if (!co) continue;
+      const top = auction.topBid;
+      if (!top) {
+        this.state.log.push({
+          round: this.state.round,
+          text: `📉 ${co.name} 매각 유찰`,
+        });
+        continue;
+      }
+      const seller = this.state.players.find(
+        (p) => p.id === auction.companyOwnerId
+      );
+      const buyer = this.state.players.find((p) => p.id === top.bidderId);
+      if (!seller || !buyer) continue;
+      if (buyer.cash < top.amount) continue; // 낙찰 시점 재확인 실패
+      // 1) 현금 이동
+      buyer.cash -= top.amount;
+      seller.cash += top.amount;
+      // 2) 낙찰자에게 기존 회사가 있으면 청산 (모든 보유자 주식 → 현금)
+      const buyerOldCo = this.state.companies[buyer.id];
+      if (buyerOldCo) {
+        for (const holder of this.state.players) {
+          const held = holder.holdings[buyer.id] ?? 0;
+          if (held > 0) {
+            holder.cash += held * buyerOldCo.price;
+            delete holder.holdings[buyer.id];
+          }
+        }
+        this.state.log.push({
+          round: this.state.round,
+          text: `⚱ ${buyerOldCo.name} 청산 (매각 인수로)`,
+        });
+        delete this.state.companies[buyer.id];
+      }
+      // 3) 소유권 이전 — companies 키 재부여 (seller.id → buyer.id)
+      co.ownerId = buyer.id;
+      delete this.state.companies[auction.companyOwnerId];
+      this.state.companies[buyer.id] = co;
+      // 4) holdings 키도 재부여: 모든 플레이어의 holdings[sellerId] → holdings[buyerId]
+      for (const holder of this.state.players) {
+        const held = holder.holdings[auction.companyOwnerId];
+        if (held) {
+          holder.holdings[buyer.id] = (holder.holdings[buyer.id] ?? 0) + held;
+          delete holder.holdings[auction.companyOwnerId];
+        }
+      }
+      this.state.log.push({
+        round: this.state.round,
+        text: `🏆 ${co.name} 낙찰 → ${buyer.nickname} (${top.amount.toLocaleString()}원)`,
+      });
+    }
+    this.state.auctions = [];
   }
 
   // SPEC 2장 ③: HYPE/WARN/SILENT 1장 선언 + 준비 처리.
@@ -461,6 +614,19 @@ export class GameRoom {
   }
 
   private advancePhase() {
+    // MANAGE 종료 → 다음 회차 INFO 또는 게임 종료.
+    if (this.state.phase === "MANAGE") {
+      this.resolveAuctions(); // 미체결 경매 낙찰 처리
+      if (this.state.round < this.state.maxRounds) {
+        this.state.round += 1;
+        this.resetRoundScopedFields();
+        this.enterPhase("INFO");
+      } else {
+        this.endGame();
+      }
+      return;
+    }
+
     const idx = ROUND_PHASES.indexOf(this.state.phase);
     if (idx === -1) return;
 
@@ -469,13 +635,11 @@ export class GameRoom {
       return;
     }
 
-    // SETTLE 종료 → 다음 회차 또는 게임 종료.
-    if (this.state.round < this.state.maxRounds) {
-      this.state.round += 1;
-      this.resetRoundScopedFields();
-      this.enterPhase("INFO");
-    } else {
+    // SETTLE 종료 → 마지막 회차면 바로 종료, 아니면 MANAGE.
+    if (this.state.round >= this.state.maxRounds) {
       this.endGame();
+    } else {
+      this.enterPhase("MANAGE");
     }
   }
 
@@ -495,6 +659,13 @@ export class GameRoom {
       const ms = BALANCE.tradeWindowSec * 1000;
       this.state.phaseDeadline = Date.now() + ms;
       this.tradeTimer = setTimeout(() => this.onTradeTimeout(), ms);
+    } else if (phase === "MANAGE") {
+      // SPEC 3.3~3.5: 30초 관리 페이즈 타이머. 종료 시 자동 다음 회차/게임 종료.
+      const ms = BALANCE.manageWindowSec * 1000;
+      this.state.phaseDeadline = Date.now() + ms;
+      this.tradeTimer = setTimeout(() => this.onManageTimeout(), ms);
+      // 새 페이즈 시작 시 경매 초기화 (이전 회차 데이터 잔재 방지)
+      this.state.auctions = [];
     } else {
       this.state.phaseDeadline = undefined;
     }
@@ -653,6 +824,9 @@ export class GameRoom {
           : 0;
       const seedBonus = BALANCE.seedGrowthMax * seedRatio;
 
+      // 기술 레벨 보너스 (SPEC 3.3): techLevel × techGrowthPerLevel.
+      const techBonus = co.techLevel * BALANCE.techGrowthPerLevel;
+
       // 신뢰도 ±1 & 거짓 카운트 누적.
       // 진실 = 선언 방향이 실제 방향과 일치, 거짓 = 불일치, SILENT = 둘 다 아님.
       const isHype = p.declaration === "HYPE";
@@ -691,13 +865,14 @@ export class GameRoom {
       }
 
       const prevPrice = co.price;
-      // 합성 변동: 이벤트 + 성장보너스 + 세무 조사 + 연구 성공. 한 번에 곱.
+      // 합성 변동: 이벤트 + 성장보너스 + 기술 + 세무 조사 + 연구 성공. 한 번에 곱.
       setPriceAndRecord(
         co,
         Math.max(
           1,
           Math.round(
-            prevPrice * (1 + eventDelta + seedBonus + auditDelta + researchDelta)
+            prevPrice *
+              (1 + eventDelta + seedBonus + techBonus + auditDelta + researchDelta)
           )
         )
       );
@@ -752,6 +927,11 @@ export class GameRoom {
 
   private onTradeTimeout() {
     if (this.state.phase !== "TRADE") return;
+    this.advancePhase();
+  }
+
+  private onManageTimeout() {
+    if (this.state.phase !== "MANAGE") return;
     this.advancePhase();
   }
 
@@ -875,6 +1055,19 @@ export class GameRoom {
           this.handleDeclare(bot.id, d);
         }
       }, 1500);
+    } else if (phase === "MANAGE") {
+      // 봇은 30% 확률로 기술 업그레이드만 시도. 피벗/엑시트는 안 함.
+      setTimeout(() => {
+        if (this.state.phase !== "MANAGE") return;
+        for (const bot of bots()) {
+          const co = this.state.companies[bot.id];
+          if (!co) continue;
+          if (Math.random() < 0.3 && co.techLevel < 5) {
+            const cost = BALANCE.techUpgradeCost(co.techLevel);
+            if (bot.cash >= cost) this.handleTechUpgrade(bot.id);
+          }
+        }
+      }, 2000);
     } else if (phase === "TRADE") {
       // 거래 페이즈 동안 봇이 산발적으로 매매. 5번 시도.
       const ms = BALANCE.tradeWindowSec * 1000;
