@@ -31,7 +31,7 @@ export default function Home() {
   return (
     <main className="flex flex-col gap-8 pt-12">
       <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-medium">블러핑 주식게임</h1>
+        <h1 className="text-2xl font-medium">인생여전 &amp; 역전</h1>
         <p className="text-sm text-neutral">
           내가 아는 미래 정보를 진실 혹은 뻥카로 흘려 남을 끌어들이는 멀티플레이어 게임.
         </p>
