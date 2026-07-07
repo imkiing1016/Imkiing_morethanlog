@@ -24,6 +24,7 @@ const SUPPORTED_MESSAGES = [
   "trade",
   "declare",
   "techUpgrade",
+  "research",
   "pivot",
   "listExit",
   "bidExit",
