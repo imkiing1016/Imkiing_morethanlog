@@ -7,6 +7,7 @@ import type { ClientMessage, Phase, Sector } from "@/game/types";
 import { BALANCE } from "@/game/balance";
 import Sparkline from "./Sparkline";
 import HoldButton from "./HoldButton";
+import SectorIcon from "./SectorIcon";
 
 const fmt = (n: number) => n.toLocaleString("ko-KR") + "원";
 
@@ -154,7 +155,7 @@ export default function GameView({
             {myCompany ? (
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <span className="mascot text-2xl">
-                  {SECTOR_MASCOTS[myCompany.sector]}
+                  {<SectorIcon sector={myCompany.sector} size={32} />}
                 </span>
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">
@@ -195,7 +196,7 @@ export default function GameView({
                       className="text-xs rounded-element bg-paper border border-cardEdge px-2 py-0.5 flex items-center gap-1"
                     >
                       <span className="mascot text-sm">
-                        {SECTOR_MASCOTS[co.sector]}
+                        {<SectorIcon sector={co.sector} size={24} />}
                       </span>
                       <span className="tabular-nums">
                         {n}주 · {fmt(co.price)}
@@ -227,7 +228,7 @@ export default function GameView({
                     : "border-cardEdge bg-card text-ink"
                 }`}
               >
-                <span className="mascot">{SECTOR_MASCOTS[s]}</span>
+                <SectorIcon sector={s} size={32} />
                 {SECTOR_LABELS[s]}
               </button>
             ))}
@@ -368,7 +369,7 @@ export default function GameView({
                             )}
                             {co && (
                               <span className="mascot">
-                                {SECTOR_MASCOTS[co.sector]}
+                                {<SectorIcon sector={co.sector} size={24} />}
                               </span>
                             )}
                           </span>
@@ -413,7 +414,7 @@ export default function GameView({
           {myCompany && (
             <div className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-3">
               <div className="flex items-center gap-3">
-                <span className="mascot">{SECTOR_MASCOTS[myCompany.sector]}</span>
+                <SectorIcon sector={myCompany.sector} size={32} />
                 <div className="flex-1">
                   <p className="font-medium">{myCompany.name}</p>
                   <p className="text-xs text-neutral">
@@ -545,7 +546,7 @@ export default function GameView({
                           onClick={() => send({ type: "pivot", newSector: s })}
                           className="rounded-element border-2 border-cardEdge bg-paper px-2 py-2 text-sm flex items-center gap-1 disabled:opacity-40"
                         >
-                          <span className="mascot text-lg">{SECTOR_MASCOTS[s]}</span>
+                          <SectorIcon sector={s} size={20} />
                           <span>{SECTOR_LABELS[s]}</span>
                         </button>
                       ))}
@@ -602,7 +603,7 @@ export default function GameView({
                     className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2"
                   >
                     <div className="flex items-center gap-3">
-                      <span className="mascot">{SECTOR_MASCOTS[co.sector]}</span>
+                      <SectorIcon sector={co.sector} size={32} />
                       <div className="flex-1">
                         <p className="font-medium">{co.name}</p>
                         <p className="text-xs text-neutral">
@@ -700,7 +701,7 @@ export default function GameView({
                         className={`shrink-0 rounded-element border-2 px-3 py-1.5 text-sm flex items-center gap-1 ${sel ? "border-ink bg-ink text-paper" : "border-cardEdge bg-card"}`}
                       >
                         <span className="mascot text-base">
-                          {SECTOR_MASCOTS[co.sector]}
+                          {<SectorIcon sector={co.sector} size={24} />}
                         </span>
                         <span>{co.name}</span>
                       </button>
@@ -724,7 +725,7 @@ export default function GameView({
                   <div className="rounded-card border-2 border-cardEdge bg-card p-4 flex flex-col gap-3">
                     <div className="flex items-center gap-3">
                       <span className="text-4xl">
-                        {SECTOR_MASCOTS[co.sector]}
+                        {<SectorIcon sector={co.sector} size={24} />}
                       </span>
                       <div className="flex-1 min-w-0">
                         <p className="text-lg font-medium truncate">
@@ -820,7 +821,7 @@ export default function GameView({
                       setTradeView("detail");
                     }}
                   >
-                    <span className="mascot">{SECTOR_MASCOTS[co.sector]}</span>
+                    <SectorIcon sector={co.sector} size={32} />
                     <div className="flex-1">
                       <p className="font-medium">
                         {co.name}
@@ -921,7 +922,7 @@ export default function GameView({
                   className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="mascot">{SECTOR_MASCOTS[co.sector]}</span>
+                    <SectorIcon sector={co.sector} size={32} />
                     <div className="flex-1">
                       <p className="font-medium">
                         {co.name}
@@ -1105,7 +1106,7 @@ export default function GameView({
                       <span className="flex items-center gap-1.5">
                         {co && (
                           <span className="mascot text-lg">
-                            {SECTOR_MASCOTS[co.sector]}
+                            {<SectorIcon sector={co.sector} size={24} />}
                           </span>
                         )}
                         {p.isBot && "🤖 "}
@@ -1197,7 +1198,7 @@ export default function GameView({
                             </div>
                             <div className="flex items-center gap-3">
                               <span className="text-5xl">
-                                {co ? SECTOR_MASCOTS[co.sector] : "❓"}
+                                {co ? <SectorIcon sector={co.sector} size={40} /> : "❓"}
                               </span>
                               <div className="flex-1 min-w-0">
                                 <p className="font-medium truncate">
@@ -1269,7 +1270,7 @@ export default function GameView({
                       >
                         <span className="flex items-center gap-1.5">
                           <span className="mascot text-lg">
-                            {SECTOR_MASCOTS[co.sector]}
+                            {<SectorIcon sector={co.sector} size={24} />}
                           </span>
                           {co.name}
                           <span className="text-neutral">
@@ -1313,7 +1314,7 @@ export default function GameView({
                         >
                           <span>
                             <span className="mascot mr-1">
-                              {SECTOR_MASCOTS[co.sector]}
+                              {<SectorIcon sector={co.sector} size={24} />}
                             </span>
                             {co.name}
                           </span>
@@ -1359,7 +1360,7 @@ export default function GameView({
                     >
                       <div className="flex items-center gap-3">
                         <span className="mascot">
-                          {SECTOR_MASCOTS[co.sector]}
+                          {<SectorIcon sector={co.sector} size={24} />}
                         </span>
                         <div className="flex-1">
                           <p className="font-medium">
@@ -1475,7 +1476,7 @@ export default function GameView({
                 <span className="font-medium flex items-center gap-2">
                   {co && (
                     <span className="mascot text-xl">
-                      {SECTOR_MASCOTS[co.sector]}
+                      {<SectorIcon sector={co.sector} size={24} />}
                     </span>
                   )}
                   <span>
