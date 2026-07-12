@@ -109,7 +109,7 @@ export class GameRoom {
       hostId: "",
       players: [],
       companies: {},
-      auctions: [],
+      exitOffers: [],
       newsEvents: [],
       log: [],
     };
@@ -187,11 +187,14 @@ export class GameRoom {
       case "pivot":
         this.handlePivot(id, msg.newSector);
         break;
-      case "listExit":
-        this.handleListExit(id);
+      case "sellToNation":
+        this.handleSellToNation(id);
         break;
-      case "bidExit":
-        this.handleBidExit(id, msg.targetOwnerId, msg.amount);
+      case "acceptExitOffer":
+        this.handleAcceptExitOffer(id, msg.offerId);
+        break;
+      case "foundNewCompany":
+        this.handleFoundNewCompany(id);
         break;
       case "rematch":
         this.handleRematch(id);
@@ -413,103 +416,272 @@ export class GameRoom {
     this.broadcastSnapshot();
   }
 
-  // SPEC 3.5 관리 페이즈: 회사 매각 리스트업. 판매자만, 회사당 1건.
-  private handleListExit(id: string) {
+  // === SPEC 3.5 엑시트 시스템 (재설계) ===
+
+  // 국가 매각: 시장가의 50% 즉시 지급, 회사 소멸.
+  private handleSellToNation(id: string) {
     if (this.state.phase !== "MANAGE") return;
+    const player = this.state.players.find((p) => p.id === id);
+    if (!player) return;
     const co = this.state.companies[id];
     if (!co) return;
-    // 이미 리스팅된 회사인지 체크.
-    if (this.state.auctions.some((a) => a.companyOwnerId === id)) return;
-    // 최소가 = 시장가 × (0.8 + 0.08 × trust) (SPEC 3.5)
     const marketCap = co.price * co.sharesOutstanding;
-    const minBid = Math.floor(marketCap * BALANCE.exitMinPriceRate(co.trust));
-    this.state.auctions.push({ companyOwnerId: id, minBid });
-    this.state.log.push({
-      round: this.state.round,
-      text: `💼 ${co.name} 매각 개시 (최소가 ${minBid.toLocaleString()}원)`,
-    });
-    this.broadcastSnapshot();
+    const salePrice = Math.floor(marketCap * BALANCE.nationBuyoutRate);
+    this.executeCompanyExit(player, co, salePrice, "NATION", "🏛️", "국가");
   }
 
-  // SPEC 3.5 관리 페이즈: 경매 입찰. 자기 회사에는 입찰 못 함.
-  private handleBidExit(id: string, targetOwnerId: string, amount: number) {
+  // 특정 NPC 인수 제안 수락: offerId 로 매칭.
+  private handleAcceptExitOffer(id: string, offerId: number) {
     if (this.state.phase !== "MANAGE") return;
-    if (id === targetOwnerId) return; // 본인 회사에 입찰 못 함
-    const bidder = this.state.players.find((p) => p.id === id);
-    if (!bidder) return;
-    const auction = this.state.auctions.find(
-      (a) => a.companyOwnerId === targetOwnerId
+    const player = this.state.players.find((p) => p.id === id);
+    if (!player) return;
+    const co = this.state.companies[id];
+    if (!co) return;
+    const offer = this.state.exitOffers.find(
+      (o) => o.id === offerId && o.companyOwnerId === id
     );
-    if (!auction) return;
-    const bid = Math.trunc(Number(amount) || 0);
-    if (bid < auction.minBid) return;
-    const topBid = auction.topBid?.amount ?? 0;
-    if (bid < topBid + BALANCE.minBidIncrement) return;
-    if (bidder.cash < bid) return; // 현금 체크(체결 시점에도 재확인)
-    auction.topBid = { bidderId: id, amount: bid };
+    if (!offer) return;
+    this.executeCompanyExit(
+      player,
+      co,
+      offer.price,
+      offer.buyerKey,
+      offer.buyerIcon,
+      offer.buyerLabel
+    );
+  }
+
+  // 공통 로직: 회사 매각 확정 처리.
+  // - 판매자에게 매각가 지급 + 투자자 모드 전환
+  // - 회사가 소멸되어 홀더들에게 매각가/총주식 × 지분 자동 청산
+  // - 같은 섹터 다른 회사들에 시장 파장 적용
+  // - 회사 관련 제안·회사 자체 삭제
+  private executeCompanyExit(
+    seller: PlayerState,
+    co: NonNullable<GameState["companies"][string]>,
+    salePrice: number,
+    buyerKey: string,
+    buyerIcon: string,
+    buyerLabel: string
+  ) {
+    const soldCoId = co.ownerId;
+    const soldSector = co.sector;
+    const soldName = co.name;
+
+    // 1) 판매자에게 매각가 지급
+    seller.cash += salePrice;
+    seller.isInvestor = true;
+
+    // 2) 다른 홀더에게 자동 청산 (매각가 × 지분비율)
+    const pricePerShare = Math.floor(salePrice / co.sharesOutstanding);
+    for (const holder of this.state.players) {
+      const held = holder.holdings[soldCoId] ?? 0;
+      if (held > 0) {
+        holder.cash += held * pricePerShare;
+        delete holder.holdings[soldCoId];
+      }
+    }
+
+    // 3) 회사 소멸 + 그 회사에 대한 남은 제안들 제거
+    delete this.state.companies[soldCoId];
+    this.state.exitOffers = this.state.exitOffers.filter(
+      (o) => o.companyOwnerId !== soldCoId
+    );
+
+    // 4) 같은 섹터 다른 회사들에 시장 파장
+    const ripple =
+      (BALANCE.ripple as Record<string, number>)[buyerKey] ?? 0;
+    if (ripple !== 0) {
+      for (const other of Object.values(this.state.companies)) {
+        if (other.sector === soldSector) {
+          setPriceAndRecord(
+            other,
+            Math.max(1, Math.round(other.price * (1 + ripple)))
+          );
+        }
+      }
+    }
+
+    // 5) 로그 + 뉴스
     this.state.log.push({
       round: this.state.round,
-      text: `🔨 ${bidder.nickname} → ${this.state.companies[targetOwnerId]?.name} 입찰 ${bid.toLocaleString()}원`,
+      text: `${buyerIcon} ${soldName} 매각 → ${buyerLabel} (${salePrice.toLocaleString()}원, 시장가 ${(
+        (salePrice / (co.price * co.sharesOutstanding)) *
+        100
+      ).toFixed(0)}%)`,
     });
+    this.pushNews(
+      buyerIcon,
+      `${soldName} 매각 성사`,
+      `${buyerLabel}가 ${salePrice.toLocaleString()}원에 인수 · 시장 ${
+        ripple > 0 ? "+" : ""
+      }${(ripple * 100).toFixed(0)}% 파장`,
+      ripple > 0 ? "good" : ripple < 0 ? "bad" : "neutral"
+    );
     this.broadcastSnapshot();
   }
 
-  // MANAGE 종료 시 남아있는 경매 낙찰 처리.
-  private resolveAuctions() {
-    for (const auction of this.state.auctions) {
-      const co = this.state.companies[auction.companyOwnerId];
-      if (!co) continue;
-      const top = auction.topBid;
-      if (!top) {
-        this.state.log.push({
-          round: this.state.round,
-          text: `📉 ${co.name} 매각 유찰`,
+  // 매 MANAGE 진입 시 각 회사에 대해 확률적으로 인수 제안 생성.
+  private generateExitOffers() {
+    this.state.exitOffers = [];
+    let idCounter = Date.now(); // unique id per offer
+    const roundsLeft = this.state.maxRounds - this.state.round;
+    const endgameBonus =
+      roundsLeft <= BALANCE.offerEndgameThreshold
+        ? BALANCE.offerEndgameBonus
+        : 0;
+
+    for (const co of Object.values(this.state.companies)) {
+      // 이 회사에 몇 개까지 제안 나올지 결정
+      let numOffers = 0;
+      const chance =
+        BALANCE.offerBaseChance +
+        co.trust * BALANCE.offerTrustBonus +
+        co.techLevel * BALANCE.offerTechBonus +
+        endgameBonus;
+      if (Math.random() < chance) numOffers = 1;
+      // 두번째 제안: 확률 절반
+      if (numOffers > 0 && Math.random() < chance / 2) numOffers = 2;
+      // 세번째: 매우 낮음
+      if (numOffers > 1 && Math.random() < 0.2) numOffers = 3;
+
+      // 조건 통과 인수자 리스트
+      const eligible = BALANCE.exitBuyers.filter((b) => {
+        // Fix TypeScript "as const" - use loose access
+        const bb = b as unknown as {
+          minTrust?: number;
+          minTech?: number;
+          minLie?: number;
+          weight?: number;
+        };
+        if (bb.minTrust !== undefined && co.trust < bb.minTrust) return false;
+        if (bb.minTech !== undefined && co.techLevel < bb.minTech) return false;
+        if (bb.minLie !== undefined && co.lieCount < bb.minLie) return false;
+        return true;
+      });
+
+      // 가중치 룰렛
+      const marketCap = co.price * co.sharesOutstanding;
+      for (let i = 0; i < numOffers; i++) {
+        if (eligible.length === 0) break;
+        const weights = eligible.map((b) => {
+          const w = (b as unknown as { weight?: number }).weight;
+          return w ?? 1;
         });
-        continue;
-      }
-      const seller = this.state.players.find(
-        (p) => p.id === auction.companyOwnerId
-      );
-      const buyer = this.state.players.find((p) => p.id === top.bidderId);
-      if (!seller || !buyer) continue;
-      if (buyer.cash < top.amount) continue; // 낙찰 시점 재확인 실패
-      // 1) 현금 이동
-      buyer.cash -= top.amount;
-      seller.cash += top.amount;
-      // 2) 낙찰자에게 기존 회사가 있으면 청산 (모든 보유자 주식 → 현금)
-      const buyerOldCo = this.state.companies[buyer.id];
-      if (buyerOldCo) {
-        for (const holder of this.state.players) {
-          const held = holder.holdings[buyer.id] ?? 0;
-          if (held > 0) {
-            holder.cash += held * buyerOldCo.price;
-            delete holder.holdings[buyer.id];
+        const total = weights.reduce((a, b) => a + b, 0);
+        let r = Math.random() * total;
+        let picked = eligible[0];
+        for (let k = 0; k < eligible.length; k++) {
+          r -= weights[k];
+          if (r <= 0) {
+            picked = eligible[k];
+            break;
           }
         }
-        this.state.log.push({
-          round: this.state.round,
-          text: `⚱ ${buyerOldCo.name} 청산 (매각 인수로)`,
+        const [lo, hi] = picked.price;
+        const priceRate = lo + Math.random() * (hi - lo);
+        const price = Math.floor(marketCap * priceRate);
+        this.state.exitOffers.push({
+          id: idCounter++,
+          companyOwnerId: co.ownerId,
+          buyerKey: picked.key,
+          buyerLabel: picked.label,
+          buyerIcon: picked.icon,
+          price,
+          priceRate,
         });
-        delete this.state.companies[buyer.id];
+        // 같은 인수자 중복 방지
+        const pi = eligible.indexOf(picked);
+        if (pi >= 0) eligible.splice(pi, 1);
       }
-      // 3) 소유권 이전 — companies 키 재부여 (seller.id → buyer.id)
-      co.ownerId = buyer.id;
-      delete this.state.companies[auction.companyOwnerId];
-      this.state.companies[buyer.id] = co;
-      // 4) holdings 키도 재부여: 모든 플레이어의 holdings[sellerId] → holdings[buyerId]
-      for (const holder of this.state.players) {
-        const held = holder.holdings[auction.companyOwnerId];
-        if (held) {
-          holder.holdings[buyer.id] = (holder.holdings[buyer.id] ?? 0) + held;
-          delete holder.holdings[auction.companyOwnerId];
-        }
-      }
-      this.state.log.push({
-        round: this.state.round,
-        text: `🏆 ${co.name} 낙찰 → ${buyer.nickname} (${top.amount.toLocaleString()}원)`,
-      });
     }
-    this.state.auctions = [];
+
+    // 뉴스 알림: 회사별로 새 제안 왔음 요약
+    const grouped = new Map<string, typeof this.state.exitOffers>();
+    for (const o of this.state.exitOffers) {
+      if (!grouped.has(o.companyOwnerId)) grouped.set(o.companyOwnerId, []);
+      grouped.get(o.companyOwnerId)!.push(o);
+    }
+    for (const [cid, offers] of grouped) {
+      const co = this.state.companies[cid];
+      if (!co) continue;
+      const best = offers.reduce((a, b) => (a.price > b.price ? a : b));
+      this.pushNews(
+        best.buyerIcon,
+        `${co.name} 인수 제안 도착`,
+        `${offers.length}건 · 최고 ${best.buyerLabel} ${(
+          best.priceRate * 100
+        ).toFixed(0)}%`,
+        best.buyerKey === "HEDGE" || best.buyerKey === "HAWK"
+          ? "bad"
+          : "good"
+      );
+    }
+  }
+
+  // 부활 IPO: 투자자가 새 회사를 창업. 랜덤 섹터, 시장평균의 70% 시총으로 시작.
+  private handleFoundNewCompany(id: string) {
+    if (this.state.phase !== "MANAGE") return;
+    const player = this.state.players.find((p) => p.id === id);
+    if (!player) return;
+    if (!player.isInvestor) return; // 이미 회사 있는 사람 불가
+    if (this.state.companies[id]) return; // 방어
+    const roundsLeft = this.state.maxRounds - this.state.round;
+    if (roundsLeft < BALANCE.rebirthMinRoundsLeft) return;
+    if (player.cash < BALANCE.rebirthCost) return;
+
+    player.cash -= BALANCE.rebirthCost;
+    player.isInvestor = false;
+
+    // 시장 평균 시총 계산
+    const others = Object.values(this.state.companies);
+    const avgCap =
+      others.length > 0
+        ? others.reduce((s, c) => s + c.price * c.sharesOutstanding, 0) /
+          others.length
+        : BALANCE.startingPrice * SHARES_OUTSTANDING;
+    const newCap = Math.floor(avgCap * BALANCE.rebirthCapMultiplier);
+    const newPrice = Math.max(
+      1,
+      Math.floor(newCap / SHARES_OUTSTANDING)
+    );
+    const sectorList: Sector[] = [
+      "IT_GAME",
+      "BEAUTY",
+      "CONSTRUCTION",
+      "RETAIL",
+      "BIO",
+      "DEFENSE",
+    ];
+    const sector = sectorList[Math.floor(Math.random() * sectorList.length)];
+
+    this.state.companies[id] = {
+      ownerId: id,
+      name: `${player.nickname} 사`,
+      sector,
+      price: newPrice,
+      techLevel: BALANCE.startingTech,
+      trust: BALANCE.startingTrust,
+      sharesOutstanding: SHARES_OUTSTANDING,
+      pricePoints: [newPrice],
+      lieCount: 0,
+      auditedThisRound: false,
+      researchBreakthroughThisRound: false,
+      researchDoneThisManage: false,
+      lastResearchOutcome: undefined,
+    };
+
+    this.state.log.push({
+      round: this.state.round,
+      text: `🌱 ${player.nickname} 부활 IPO · 새 회사 창업 (${sector})`,
+    });
+    this.pushNews(
+      "🌱",
+      `${player.nickname} 재기 IPO`,
+      `투자자에서 창업자로 · 시장평균의 70% 시총 스타트`,
+      "good"
+    );
+    this.broadcastSnapshot();
   }
 
   // SPEC 2장 ③: HYPE/WARN/SILENT 1장 선언 + 코멘트(선택) + 준비 처리.
@@ -559,6 +731,7 @@ export class GameRoom {
       ready: false,
       seedInvested: 0,
       purchasedInfos: [],
+      isInvestor: false,
       connected: true,
     };
     this.state.players.push(player);
@@ -584,6 +757,7 @@ export class GameRoom {
       ready: false,
       seedInvested: 0,
       purchasedInfos: [],
+      isInvestor: false,
       isBot: true,
       connected: true,
     });
@@ -696,7 +870,8 @@ export class GameRoom {
   private advancePhase() {
     // MANAGE 종료 → 다음 회차 INFO 또는 게임 종료.
     if (this.state.phase === "MANAGE") {
-      this.resolveAuctions(); // 미체결 경매 낙찰 처리
+      // 남아있는 인수 제안은 자동 소멸 (다음 MANAGE에 새로 생성됨)
+      this.state.exitOffers = [];
       if (this.state.round < this.state.maxRounds) {
         this.state.round += 1;
         this.resetRoundScopedFields();
@@ -746,9 +921,8 @@ export class GameRoom {
       const ms = BALANCE.manageWindowSec * 1000;
       this.state.phaseDeadline = Date.now() + ms;
       this.tradeTimer = setTimeout(() => this.onManageTimeout(), ms);
-      // 새 페이즈 시작 시 경매 초기화 (이전 회차 데이터 잔재 방지)
-      this.state.auctions = [];
-      // 연구는 회차당 1회 → MANAGE 진입 시 리셋.
+      // 새 페이즈 시작 시 인수 제안 재생성 + 연구 리셋
+      this.generateExitOffers();
       for (const co of Object.values(this.state.companies)) {
         co.researchDoneThisManage = false;
         co.lastResearchOutcome = undefined;
@@ -765,9 +939,25 @@ export class GameRoom {
   // 동시에 SPEC 3.6 글로벌 이벤트도 결정해 모두에게 공개(헤드라인). 적용은 SETTLE에서.
   private onEnterInfo() {
     for (const p of this.state.players) {
-      p.privateInfo = Math.random() < 0.5 ? "BULLISH" : "BEARISH";
       p.declaration = undefined;
       p.purchasedInfos = [];
+      p.investorInsiderInfo = undefined;
+
+      if (p.isInvestor || !this.state.companies[p.id]) {
+        // 투자자: 자기 회사 없음 → privateInfo 없음.
+        // 대신 랜덤 회사의 방향을 인사이더 정보로 무료 지급 (SPEC 3.5 특권).
+        p.privateInfo = undefined;
+        const targets = Object.values(this.state.companies);
+        if (targets.length > 0) {
+          const t = targets[Math.floor(Math.random() * targets.length)];
+          p.investorInsiderInfo = {
+            ownerId: t.ownerId,
+            direction: Math.random() < 0.5 ? "BULLISH" : "BEARISH",
+          };
+        }
+      } else {
+        p.privateInfo = Math.random() < 0.5 ? "BULLISH" : "BEARISH";
+      }
     }
     // 회차 시작 — 가격 히스토리 새 회차분으로 초기화(현 가격 한 점부터 시작).
     for (const co of Object.values(this.state.companies)) {
@@ -1080,9 +1270,11 @@ export class GameRoom {
       p.pendingPosition = undefined;
       p.seedInvested = 0;
       p.purchasedInfos = [];
+      p.isInvestor = false;
+      p.investorInsiderInfo = undefined;
     }
     this.state.companies = {};
-    this.state.auctions = [];
+    this.state.exitOffers = [];
     this.state.newsEvents = [];
     this.state.round = 0;
     this.state.phase = "LOBBY";
@@ -1141,18 +1333,50 @@ export class GameRoom {
         if (this.state.phase !== "DECLARE") return;
         for (const bot of bots()) {
           if (bot.ready) continue;
+          // 투자자 봇은 선언 불가 → 그냥 ready
+          if (bot.isInvestor || !this.state.companies[bot.id]) {
+            this.handleReady(bot.id);
+            continue;
+          }
           const d =
             declarations[Math.floor(Math.random() * declarations.length)];
           this.handleDeclare(bot.id, d);
         }
       }, 1500);
     } else if (phase === "MANAGE") {
-      // 봇: 30% 확률로 기술 업그레이드, 25% 확률로 연구(랜덤 tier).
+      // 봇: 기술 업그레이드/연구/엑시트 결정.
       setTimeout(() => {
         if (this.state.phase !== "MANAGE") return;
+        const roundsLeft = this.state.maxRounds - this.state.round;
         for (const bot of bots()) {
           const co = this.state.companies[bot.id];
-          if (!co) continue;
+          // 회사 없으면 (투자자) → 부활 IPO 가끔 시도
+          if (!co) {
+            if (
+              roundsLeft >= BALANCE.rebirthMinRoundsLeft &&
+              bot.cash >= BALANCE.rebirthCost &&
+              Math.random() < 0.2
+            ) {
+              this.handleFoundNewCompany(bot.id);
+            }
+            continue;
+          }
+          // 엑시트 결정: 남은 회차에 따라 수락 확률 변함
+          const myOffers = this.state.exitOffers.filter(
+            (o) => o.companyOwnerId === bot.id
+          );
+          if (myOffers.length > 0) {
+            const best = myOffers.reduce((a, b) =>
+              a.price > b.price ? a : b
+            );
+            // 종반 + 좋은 제안이면 수락 확률 높음
+            const acceptChance =
+              (roundsLeft <= 2 ? 0.5 : 0.15) + (best.priceRate - 0.5) * 0.5;
+            if (Math.random() < acceptChance) {
+              this.handleAcceptExitOffer(bot.id, best.id);
+              continue; // 매각했으면 더 행동 안 함
+            }
+          }
           if (Math.random() < 0.3 && co.techLevel < 5) {
             const cost = BALANCE.techUpgradeCost(co.techLevel);
             if (bot.cash >= cost) this.handleTechUpgrade(bot.id);
@@ -1274,6 +1498,7 @@ export class GameRoom {
               privateInfo: undefined,
               pendingPosition: undefined,
               purchasedInfos: [],
+              investorInsiderInfo: undefined,
             }
       ),
     };
