@@ -100,6 +100,10 @@ export interface PlayerState {
   // 공개: 게임 시작 시 자기 회사에 박은 창업 출자 금액(0 ~ BALANCE.seedInvestedMax).
   // 매 회차 정산에서 자기 회사 주가에 추가 성장률을 부여한다.
   seedInvested: number;
+  // 회사를 엑시트해서 회사가 없는 상태(투자자 모드). 매매·정보구매만 가능.
+  isInvestor: boolean;
+  // 투자자 특권: 매 회차 INFO 진입 시 랜덤 회사 방향 정보 무료 지급.
+  investorInsiderInfo?: { ownerId: string; direction: Direction };
   // 테스트용 봇 여부 (SPEC 1.0.5).
   isBot?: boolean;
   connected: boolean;
@@ -114,11 +118,16 @@ export interface GameState {
   players: PlayerState[];
   companies: Record<string /*ownerId*/, Company>;
   phaseDeadline?: number; // epoch ms, 거래 페이즈 타이머
-  // 관리 페이즈 진행 중인 경매 목록(엑시트). MANAGE 종료 시 낙찰 처리.
-  auctions: Array<{
-    companyOwnerId: string; // 판매 개시 시점의 회사 소유자(원 판매자)
-    minBid: number;
-    topBid?: { bidderId: string; amount: number };
+  // 매 MANAGE 진입 시 회사별로 랜덤 생성되는 NPC 인수 제안.
+  // 다음 MANAGE 진입 때 사라지고 새로 생성됨. 회사당 최대 offerMaxPending 개.
+  exitOffers: Array<{
+    id: number;
+    companyOwnerId: string; // 대상 회사 (원 소유주)
+    buyerKey: string; // BALANCE.exitBuyers.key
+    buyerLabel: string;
+    buyerIcon: string;
+    price: number; // 절대 금액 (원)
+    priceRate: number; // 시장가 대비 비율 (표시용)
   }>;
   // 시장 뉴스 이벤트 스트림 — 우측 상단 팝업 카드로 표시.
   // 서버가 push, 클라가 최근 N개 렌더 + 오래된 것 자동 dismiss.
@@ -172,10 +181,12 @@ export type ClientMessage =
   | { type: "research"; tier: 0 | 1 | 2 }
   // 관리 페이즈: 사업 전환(피벗). 새 섹터로 이동, 신뢰도 3 리셋
   | { type: "pivot"; newSector: Sector }
-  // 관리 페이즈: 회사 매각 리스트업 (판매 개시)
-  | { type: "listExit" }
-  // 관리 페이즈: 매각 중인 회사에 입찰
-  | { type: "bidExit"; targetOwnerId: string; amount: number }
+  // 관리 페이즈: 국가에 회사 매각 (시장가의 50%, 즉시 확정)
+  | { type: "sellToNation" }
+  // 관리 페이즈: 특정 NPC 인수 제안 수락
+  | { type: "acceptExitOffer"; offerId: number }
+  // 관리 페이즈: 투자자가 새 회사 창업 (부활 IPO)
+  | { type: "foundNewCompany" }
   // 게임 종료 후: 호스트가 리매치 (같은 인원으로 로비 복귀)
   | { type: "rematch" }
   | { type: "ready" }; // 현재 페이즈 입력 완료 신호 (TRADE 제외 조기 전환용)

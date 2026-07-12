@@ -167,6 +167,14 @@ export default function GameView({
                   </p>
                 </div>
               </div>
+            ) : self?.isInvestor ? (
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <span className="mascot text-2xl">💼</span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">투자자</p>
+                  <p className="text-xs text-neutral">회사 매각 · 매매·정보로 활동</p>
+                </div>
+              </div>
             ) : (
               <span className="text-xs text-neutral">회사 없음 (관전 모드)</span>
             )}
@@ -555,94 +563,124 @@ export default function GameView({
                 );
               })()}
 
-              {/* 매각 */}
+              {/* 국가 매각 — 시장가의 50%, 즉시 확정 */}
               {(() => {
                 const marketCap = myCompany.price * myCompany.sharesOutstanding;
-                const minBid = Math.floor(
-                  marketCap * BALANCE.exitMinPriceRate(myCompany.trust)
-                );
-                const listed = state.auctions.some((a) => a.companyOwnerId === selfId);
+                const payout = Math.floor(marketCap * BALANCE.nationBuyoutRate);
                 return (
                   <button
-                    disabled={listed}
-                    onClick={() => send({ type: "listExit" })}
-                    className={`rounded-element border-2 px-3 py-2 text-left flex justify-between items-center disabled:opacity-40 ${listed ? "border-warning bg-accentSoft" : "border-cardEdge bg-card"}`}
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `국가 매각: ${fmt(payout)} (시장가 50%) 을 즉시 받고 회사가 상장폐지됩니다. 진행할까요?`
+                        )
+                      ) {
+                        send({ type: "sellToNation" });
+                      }
+                    }}
+                    className="rounded-element border-2 border-cardEdge bg-card px-3 py-2 text-left flex justify-between items-center"
                   >
                     <span>
-                      💼 회사 매각 (엑시트)
+                      🏛️ 국가 매각
                       <span className="block text-xs text-neutral">
-                        {listed ? "매각 중 · 낙찰 대기" : `최소가 ${fmt(minBid)}`}
+                        시장가 {(BALANCE.nationBuyoutRate * 100).toFixed(0)}% · 즉시 확정 · 투자자 전환
                       </span>
                     </span>
-                    <span className="text-sm text-neutral">
-                      {listed ? "리스트됨" : "매각 개시"}
+                    <span className="text-sm text-success tabular-nums">
+                      +{fmt(payout)}
                     </span>
                   </button>
+                );
+              })()}
+
+              {/* NPC 인수 제안 — 매 관리 페이즈마다 확률로 생성 */}
+              {(() => {
+                const myOffers = state.exitOffers.filter(
+                  (o) => o.companyOwnerId === selfId
+                );
+                if (myOffers.length === 0) {
+                  return (
+                    <div className="rounded-element border-2 border-cardEdge bg-paper px-3 py-2 text-xs text-neutral">
+                      💌 이번 회차에는 인수 제안이 도착하지 않았어요.
+                    </div>
+                  );
+                }
+                return (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-sm font-medium">💌 인수 제안</p>
+                    {myOffers.map((o) => (
+                      <button
+                        key={o.id}
+                        onClick={() => {
+                          if (
+                            confirm(
+                              `${o.buyerLabel} 의 제안 (${fmt(o.price)}, 시장가 ${(o.priceRate * 100).toFixed(0)}%) 을 수락하시겠어요? 회사가 상장폐지됩니다.`
+                            )
+                          ) {
+                            send({ type: "acceptExitOffer", offerId: o.id });
+                          }
+                        }}
+                        className="rounded-element border-2 border-cardEdge bg-card px-3 py-2 text-left flex justify-between items-center"
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="text-2xl">{o.buyerIcon}</span>
+                          <span>
+                            {o.buyerLabel}
+                            <span className="block text-xs text-neutral">
+                              시장가 {(o.priceRate * 100).toFixed(0)}% 제시
+                            </span>
+                          </span>
+                        </span>
+                        <span className="text-sm text-success tabular-nums">
+                          +{fmt(o.price)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 );
               })()}
             </div>
           )}
 
-          {/* 다른 회사 경매 목록 */}
-          {state.auctions.length > 0 && (
-            <>
-              <p className="text-sm text-neutral">🔨 진행 중인 경매</p>
-              {state.auctions.map((a) => {
-                const co = state.companies[a.companyOwnerId];
-                if (!co) return null;
-                const isMine = a.companyOwnerId === selfId;
-                const top = a.topBid;
-                const nextBid = Math.max(
-                  a.minBid,
-                  (top?.amount ?? 0) + BALANCE.minBidIncrement
-                );
-                const affordable = (self?.cash ?? 0) >= nextBid;
-                return (
-                  <div
-                    key={a.companyOwnerId}
-                    className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2"
-                  >
-                    <div className="flex items-center gap-3">
-                      <SectorIcon sector={co.sector} size={32} />
-                      <div className="flex-1">
-                        <p className="font-medium">{co.name}</p>
-                        <p className="text-xs text-neutral">
-                          {SECTOR_LABELS[co.sector]} · 최소가 {fmt(a.minBid)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-sm">
-                      현재 최고가:{" "}
-                      <span className="font-medium tabular-nums">
-                        {top ? fmt(top.amount) : "—"}
-                      </span>
-                      {top && (
-                        <span className="text-neutral">
-                          {" "}
-                          ({state.players.find((p) => p.id === top.bidderId)?.nickname})
-                        </span>
-                      )}
-                    </div>
-                    {!isMine && (
-                      <button
-                        disabled={!affordable}
-                        onClick={() =>
-                          send({
-                            type: "bidExit",
-                            targetOwnerId: a.companyOwnerId,
-                            amount: nextBid,
-                          })
-                        }
-                        className="rounded-element bg-warning text-ink px-3 py-2 font-medium text-sm disabled:opacity-40"
-                      >
-                        🔨 입찰 {fmt(nextBid)}
-                      </button>
-                    )}
+          {/* 투자자 모드 — 회사 없음. 부활 IPO 옵션 표시 */}
+          {!myCompany && self?.isInvestor && (() => {
+            const roundsLeft = state.maxRounds - state.round;
+            const canRebirth =
+              roundsLeft >= BALANCE.rebirthMinRoundsLeft &&
+              (self?.cash ?? 0) >= BALANCE.rebirthCost;
+            const reason =
+              roundsLeft < BALANCE.rebirthMinRoundsLeft
+                ? `남은 회차 ${roundsLeft} · ${BALANCE.rebirthMinRoundsLeft}회차 이상 남아야 창업 가능`
+                : (self?.cash ?? 0) < BALANCE.rebirthCost
+                  ? `현금 부족 (필요 ${fmt(BALANCE.rebirthCost)})`
+                  : `새 회사 창업 · 랜덤 섹터`;
+            return (
+              <div className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">💼</span>
+                  <div className="flex-1">
+                    <p className="font-medium">투자자 모드</p>
+                    <p className="text-xs text-neutral">
+                      회사가 없어요. 매매·정보 구매로 자산을 굴리거나 새로 창업할 수 있어요.
+                    </p>
                   </div>
-                );
-              })}
-            </>
-          )}
+                </div>
+                <button
+                  disabled={!canRebirth}
+                  onClick={() => send({ type: "foundNewCompany" })}
+                  className="rounded-element border-2 border-cardEdge bg-paper px-3 py-2 text-left flex justify-between items-center disabled:opacity-40"
+                >
+                  <span>
+                    🚀 부활 IPO (새 회사 창업)
+                    <span className="block text-xs text-neutral">{reason}</span>
+                  </span>
+                  <span className="text-sm text-danger tabular-nums">
+                    −{fmt(BALANCE.rebirthCost)}
+                  </span>
+                </button>
+              </div>
+            );
+          })()}
 
           <p className="text-xs text-neutral">
             현금 {fmt(self?.cash ?? 0)} · 시간이 끝나면 자동으로 다음 회차
@@ -1031,6 +1069,25 @@ export default function GameView({
         </section>
       ) : isDeclare ? (
         <section className="flex flex-col gap-3">
+          {!myCompany && self?.isInvestor ? (
+            <>
+              <p className="text-sm text-neutral">
+                💼 투자자에게는 선언할 회사가 없어요. 다른 사람의 선언을 지켜보다가 준비되면 넘겨주세요.
+              </p>
+              <button
+                onClick={() => send({ type: "ready" })}
+                disabled={self?.ready}
+                className={`rounded-element border-2 px-3 py-3 text-left ${
+                  self?.ready
+                    ? "border-success bg-success/10 text-success"
+                    : "border-cardEdge bg-card"
+                } disabled:opacity-60`}
+              >
+                {self?.ready ? "✅ 준비 완료" : "▶ 준비 완료"}
+              </button>
+            </>
+          ) : (
+            <>
           <p className="text-sm text-neutral">
             전망 카드 1장을 공개로 낸다 (진실 의무 없음)
           </p>
@@ -1135,33 +1192,48 @@ export default function GameView({
           <p className="text-xs text-neutral">
             선언 완료 {readyCount} / {connected.length}
           </p>
+            </>
+          )}
         </section>
       ) : (
         <section className="flex flex-col gap-3">
-          {isInfo && self?.privateInfo && (
+          {isInfo && (self?.privateInfo || self?.investorInsiderInfo) && (
             <>
               {/* 정보 카드 캐러셀: 가로 스와이프, 한 번에 한 장씩 */}
               {(() => {
-                // [내 정보, 구매한 정보들] 을 하나의 카드 리스트로 통합
+                // [내 정보(또는 투자자 인사이더 정보), 구매한 정보들] 을 하나의 카드 리스트로 통합
                 const cards: Array<{
                   key: string;
                   ownerId: string;
                   isMine: boolean;
+                  isInsider?: boolean;
                   direction: "BULLISH" | "BEARISH";
-                }> = [
-                  {
+                }> = [];
+                if (self?.privateInfo) {
+                  cards.push({
                     key: `self-${selfId}`,
                     ownerId: selfId ?? "",
                     isMine: true,
                     direction: self.privateInfo,
-                  },
-                  ...(self.purchasedInfos ?? []).map((info) => ({
+                  });
+                }
+                if (self?.investorInsiderInfo) {
+                  cards.push({
+                    key: `insider-${self.investorInsiderInfo.ownerId}`,
+                    ownerId: self.investorInsiderInfo.ownerId,
+                    isMine: false,
+                    isInsider: true,
+                    direction: self.investorInsiderInfo.direction,
+                  });
+                }
+                (self?.purchasedInfos ?? []).forEach((info) => {
+                  cards.push({
                     key: `p-${info.ownerId}`,
                     ownerId: info.ownerId,
                     isMine: false,
                     direction: info.direction,
-                  })),
-                ];
+                  });
+                });
                 return (
                   <div className="flex flex-col gap-2">
                     <div className="flex justify-between items-baseline">
@@ -1190,7 +1262,11 @@ export default function GameView({
                           >
                             <div className="flex items-center justify-between">
                               <span className="text-xs text-neutral">
-                                {card.isMine ? "🔒 내 회사 정보" : "💰 구매한 정보"}
+                                {card.isMine
+                                  ? "🔒 내 회사 정보"
+                                  : card.isInsider
+                                    ? "🕵️ 투자자 인사이더"
+                                    : "💰 구매한 정보"}
                               </span>
                               <span className="text-xs text-neutral">
                                 회차 {state.round} 정산

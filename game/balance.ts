@@ -30,7 +30,39 @@ export const BALANCE = {
   globalEventMagnitudeRange: [0.1, 0.25] as const, // 글로벌 이벤트 강도 (SPEC 3.6)
   techGrowthPerLevel: 0.01, // 기술 레벨당 정산 시 기본 주가 상승률 (+1%/lvl, SPEC 3.3)
   manageWindowSec: 30, // 관리 페이즈 타이머 (SPEC 3.3~3.5)
-  minBidIncrement: 100_000, // 엑시트 경매 최소 입찰 증가 폭
+  // === 엑시트 시스템 (개편판) ===
+  // 국가 매각: 시장가 × 이 비율 (즉시 확정)
+  nationBuyoutRate: 0.5,
+  // NPC 인수 제안 확률/가격 (매 MANAGE 진입 시 회사별로 계산)
+  //   기본 확률 30% + 신뢰도×5% + 기술레벨×3% + 종반보너스(회차 ≤3 남으면 +20%)
+  offerBaseChance: 0.3,
+  offerTrustBonus: 0.05,
+  offerTechBonus: 0.03,
+  offerEndgameBonus: 0.2,
+  offerEndgameThreshold: 3, // 남은 회차 ≤ 이 값일 때 종반 보너스
+  // 인수자 타입별 (조건 · 가격 범위 · 시장 파장)
+  // 저조건이 낮은 순서로 나열, 랜덤 룰렛 시 조건 통과한 것 중 하나 선택.
+  exitBuyers: [
+    { key: "HAWK",    label: "월가의 매파",      icon: "🐺", price: [0.40, 0.55] as const, tone: "bad" as const },
+    { key: "HEDGE",   label: "적대적 헤지펀드",  icon: "🎭", price: [0.30, 0.40] as const, tone: "bad" as const,     minLie: 2 },
+    { key: "CHAEBOL", label: "재벌 3세",         icon: "🏢", price: [0.60, 0.75] as const, tone: "neutral" as const, minTrust: 3 },
+    { key: "VC",      label: "벤처캐피탈",       icon: "🌟", price: [0.80, 0.95] as const, tone: "good" as const,    minTrust: 4, minTech: 3, weight: 0.5 },
+    { key: "MYSTERY", label: "비밀 매수자",      icon: "🕵️", price: [1.00, 1.20] as const, tone: "good" as const,    weight: 0.05 },
+  ] as const,
+  offerMaxPending: 3, // 한 회사가 동시에 받을 수 있는 최대 제안
+  // 매각 시 동섹터 시장 파장 (해당 매각 종류에 따라 나머지 회사 주가 변동)
+  ripple: {
+    NATION: 0.10,  // 국가 매각 → 경쟁자 반사이익
+    HAWK: 0.05,
+    CHAEBOL: 0.05,
+    VC: 0.08,      // 러브콜 → 섹터 재조명
+    HEDGE: -0.12,  // 헤지펀드 → 섹터 도미노
+    MYSTERY: 0.05,
+  } as const,
+  // 부활 IPO (엑시트 후 새 회사 창업)
+  rebirthCost: 5_000_000,
+  rebirthMinRoundsLeft: 3, // 남은 회차가 이 값 이상일 때만
+  rebirthCapMultiplier: 0.7, // 시장 평균 시총의 이 비율로 시작
   maxSelfOwnership: 0.6, // 자기 회사 지분 상한
   trustInfluence: (t: number) => 0.4 + 0.12 * t,
   eventMagnitudeRange: [0.15, 0.4] as const, // 강도 랜덤 범위
