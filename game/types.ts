@@ -138,6 +138,13 @@ export interface GameState {
     headline: string;
     detail?: string;
     tone: "good" | "bad" | "neutral";
+    // 큰 오버레이 모달로 표시할 이벤트 (예: 회사 매각 성사, 부활 IPO).
+    // true 이면 우측 상단 뉴스 스택에는 안 뜨고 SpotlightModal 로만 렌더.
+    spotlight?: boolean;
+    // 인수자의 한마디 (매각 성사 오버레이용). 있으면 큰 인용구로 표시.
+    flavorQuote?: string;
+    // 오버레이 강조용 색 톤. spotlight 전용.
+    spotlightTone?: "celebration" | "hostile" | "somber" | "rebirth";
   }>;
   // 이번 회차 정산에서 적용될 글로벌 이벤트 (INFO 진입 시 결정 → SETTLE 에 적용)
   pendingGlobalEvent?: { sector: Sector; magnitude: number; headline: string };

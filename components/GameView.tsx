@@ -578,17 +578,35 @@ export default function GameView({
                         send({ type: "sellToNation" });
                       }
                     }}
-                    className="rounded-element border-2 border-cardEdge bg-card px-3 py-2 text-left flex justify-between items-center"
+                    className="nation-btn relative rounded-element border-2 border-cardEdge bg-card px-3 py-2 text-left flex justify-between items-center overflow-hidden"
                   >
-                    <span>
-                      🏛️ 국가 매각
-                      <span className="block text-xs text-neutral">
-                        시장가 {(BALANCE.nationBuyoutRate * 100).toFixed(0)}% · 즉시 확정 · 투자자 전환
+                    <span className="flex items-center gap-2">
+                      <span className="text-2xl">🏛️</span>
+                      <span>
+                        <span className="font-medium">국가 매각</span>
+                        <span className="block text-xs text-neutral">
+                          시장가 {(BALANCE.nationBuyoutRate * 100).toFixed(0)}% · 즉시 확정 · 투자자 전환
+                        </span>
                       </span>
                     </span>
                     <span className="text-sm text-success tabular-nums">
                       +{fmt(payout)}
                     </span>
+                    <style jsx>{`
+                      .nation-btn::after {
+                        content: "OFFICIAL";
+                        position: absolute;
+                        top: 2px;
+                        right: 6px;
+                        font-size: 8px;
+                        letter-spacing: 1px;
+                        color: rgba(0, 0, 0, 0.3);
+                        border: 1px solid rgba(0, 0, 0, 0.3);
+                        padding: 0 3px;
+                        border-radius: 2px;
+                        transform: rotate(4deg);
+                      }
+                    `}</style>
                   </button>
                 );
               })()}
@@ -605,37 +623,125 @@ export default function GameView({
                     </div>
                   );
                 }
+                // 인수자 key 로 카드 톤 결정.
+                const buyerTone = (
+                  k: string
+                ): { border: string; accent: string; ribbon: string } => {
+                  switch (k) {
+                    case "HAWK":
+                      return {
+                        border: "border-danger",
+                        accent: "text-danger",
+                        ribbon: "🐺 매파",
+                      };
+                    case "HEDGE":
+                      return {
+                        border: "border-danger",
+                        accent: "text-danger",
+                        ribbon: "🩸 적대",
+                      };
+                    case "CHAEBOL":
+                      return {
+                        border: "border-warning",
+                        accent: "text-warning",
+                        ribbon: "🏢 재벌",
+                      };
+                    case "VC":
+                      return {
+                        border: "border-success",
+                        accent: "text-success",
+                        ribbon: "🌟 러브콜",
+                      };
+                    case "MYSTERY":
+                      return {
+                        border: "border-warning",
+                        accent: "text-warning",
+                        ribbon: "🕵️ 비밀",
+                      };
+                    default:
+                      return {
+                        border: "border-cardEdge",
+                        accent: "text-neutral",
+                        ribbon: "제안",
+                      };
+                  }
+                };
                 return (
                   <div className="flex flex-col gap-2">
-                    <p className="text-sm font-medium">💌 인수 제안</p>
-                    {myOffers.map((o) => (
-                      <button
-                        key={o.id}
-                        onClick={() => {
-                          if (
-                            confirm(
-                              `${o.buyerLabel} 의 제안 (${fmt(o.price)}, 시장가 ${(o.priceRate * 100).toFixed(0)}%) 을 수락하시겠어요? 회사가 상장폐지됩니다.`
-                            )
-                          ) {
-                            send({ type: "acceptExitOffer", offerId: o.id });
-                          }
-                        }}
-                        className="rounded-element border-2 border-cardEdge bg-card px-3 py-2 text-left flex justify-between items-center"
-                      >
-                        <span className="flex items-center gap-2">
-                          <span className="text-2xl">{o.buyerIcon}</span>
-                          <span>
-                            {o.buyerLabel}
-                            <span className="block text-xs text-neutral">
-                              시장가 {(o.priceRate * 100).toFixed(0)}% 제시
+                    <p className="text-sm font-medium">
+                      💌 인수 제안 · {myOffers.length}건 도착
+                    </p>
+                    {myOffers.map((o, i) => {
+                      const t = buyerTone(o.buyerKey);
+                      return (
+                        <button
+                          key={o.id}
+                          onClick={() => {
+                            if (
+                              confirm(
+                                `${o.buyerLabel} 의 제안 (${fmt(o.price)}, 시장가 ${(o.priceRate * 100).toFixed(0)}%) 을 수락하시겠어요? 회사가 상장폐지됩니다.`
+                              )
+                            ) {
+                              send({ type: "acceptExitOffer", offerId: o.id });
+                            }
+                          }}
+                          style={{ animationDelay: `${i * 90}ms` }}
+                          className={`offer-card relative rounded-element border-2 ${t.border} bg-card px-3 py-2 text-left flex justify-between items-center overflow-hidden`}
+                        >
+                          <span
+                            className={`absolute top-0 right-0 text-[10px] px-1.5 py-0.5 rounded-bl-md bg-paper border-l border-b ${t.border} ${t.accent}`}
+                          >
+                            {t.ribbon}
+                          </span>
+                          <span className="flex items-center gap-2">
+                            <span className="text-2xl offer-icon">
+                              {o.buyerIcon}
+                            </span>
+                            <span>
+                              <span className={`font-medium ${t.accent}`}>
+                                {o.buyerLabel}
+                              </span>
+                              <span className="block text-xs text-neutral">
+                                시장가 {(o.priceRate * 100).toFixed(0)}% 제시
+                              </span>
                             </span>
                           </span>
-                        </span>
-                        <span className="text-sm text-success tabular-nums">
-                          +{fmt(o.price)}
-                        </span>
-                      </button>
-                    ))}
+                          <span className="text-sm text-success tabular-nums pr-8">
+                            +{fmt(o.price)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    <style jsx>{`
+                      .offer-card {
+                        animation: offer-slide-in 420ms cubic-bezier(0.2, 1.2, 0.4, 1) both;
+                      }
+                      .offer-card:hover .offer-icon {
+                        animation: offer-icon-wiggle 500ms ease-in-out;
+                      }
+                      @keyframes offer-slide-in {
+                        from {
+                          transform: translateX(24px) scale(0.96);
+                          opacity: 0;
+                        }
+                        to {
+                          transform: translateX(0) scale(1);
+                          opacity: 1;
+                        }
+                      }
+                      @keyframes offer-icon-wiggle {
+                        0%,
+                        100% {
+                          transform: rotate(0);
+                        }
+                        25% {
+                          transform: rotate(-12deg);
+                        }
+                        75% {
+                          transform: rotate(12deg);
+                        }
+                      }
+                    `}</style>
                   </div>
                 );
               })()}
@@ -668,15 +774,47 @@ export default function GameView({
                 <button
                   disabled={!canRebirth}
                   onClick={() => send({ type: "foundNewCompany" })}
-                  className="rounded-element border-2 border-cardEdge bg-paper px-3 py-2 text-left flex justify-between items-center disabled:opacity-40"
+                  className={`rebirth-btn rounded-element border-2 border-warning bg-paper px-3 py-2 text-left flex justify-between items-center disabled:opacity-40 disabled:border-cardEdge ${
+                    canRebirth ? "rebirth-glow" : ""
+                  }`}
                 >
-                  <span>
-                    🚀 부활 IPO (새 회사 창업)
-                    <span className="block text-xs text-neutral">{reason}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-2xl rebirth-rocket">🚀</span>
+                    <span>
+                      <span className="font-medium">부활 IPO (새 회사 창업)</span>
+                      <span className="block text-xs text-neutral">{reason}</span>
+                    </span>
                   </span>
                   <span className="text-sm text-danger tabular-nums">
                     −{fmt(BALANCE.rebirthCost)}
                   </span>
+                  <style jsx>{`
+                    .rebirth-glow {
+                      animation: rebirth-glow 2s ease-in-out infinite;
+                    }
+                    .rebirth-glow .rebirth-rocket {
+                      display: inline-block;
+                      animation: rebirth-hover 2s ease-in-out infinite;
+                    }
+                    @keyframes rebirth-glow {
+                      0%,
+                      100% {
+                        box-shadow: 0 0 0 0 rgba(240, 180, 40, 0);
+                      }
+                      50% {
+                        box-shadow: 0 0 12px 2px rgba(240, 180, 40, 0.4);
+                      }
+                    }
+                    @keyframes rebirth-hover {
+                      0%,
+                      100% {
+                        transform: translateY(0);
+                      }
+                      50% {
+                        transform: translateY(-3px);
+                      }
+                    }
+                  `}</style>
                 </button>
               </div>
             );

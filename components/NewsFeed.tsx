@@ -18,7 +18,12 @@ export default function NewsFeed() {
 
   useEffect(() => {
     // 새 이벤트 감지 → 화면에 추가 + 타이머
+    // spotlight 이벤트는 큰 오버레이(SpotlightModal)로만 표시하고 이 스택에선 제외.
     for (const n of news) {
+      if (n.spotlight) {
+        seen.add(n.id); // 나중에 spotlight 해제돼도 재등장 안 하게 seen 기록
+        continue;
+      }
       if (!seen.has(n.id)) {
         seen.add(n.id);
         setSeen(new Set(seen));
