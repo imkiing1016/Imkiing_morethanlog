@@ -45,9 +45,9 @@ export default function GameHeader({
 }: GameHeaderProps) {
   return (
     <header className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2">
-      {/* 1행: 회차/페이즈 + 타이머 */}
+      {/* 1행: 회차/페이즈 + 타이머 + 특별 이벤트 배지 */}
       <div className="flex items-center justify-between">
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-baseline gap-2 flex-wrap">
           {state.round >= 1 && (
             <span className="text-xs text-neutral tabular-nums">
               R {state.round}/{state.maxRounds}
@@ -56,6 +56,16 @@ export default function GameHeader({
           <span className={`text-lg font-medium ${PHASE_ACCENT[state.phase]}`}>
             {PHASE_LABEL[state.phase]}
           </span>
+          {state.pendingLeverage && (
+            <span className="rounded-element bg-warning/20 border border-warning px-2 py-0.5 text-xs font-medium text-warning animate-pulse">
+              🎢 레버리지 {state.pendingLeverage}배
+            </span>
+          )}
+          {state.pendingBigEvent && (
+            <span className="rounded-element bg-danger/15 border border-danger px-2 py-0.5 text-xs font-medium text-danger animate-pulse">
+              {state.pendingBigEvent.emoji} {state.pendingBigEvent.label}
+            </span>
+          )}
         </div>
         {secondsLeft !== null && (
           <span className="rounded-element bg-accentSoft border-2 border-cardEdge px-3 py-0.5 text-lg font-medium text-warning tabular-nums">
