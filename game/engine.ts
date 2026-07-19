@@ -354,6 +354,8 @@ export class GameRoom {
 
     player.cash = newCash;
     player.holdings[companyOwnerId] = after;
+    // 이번 회차 매매 순현금 흐름 (매수 = 유출, 매도 = 유입). SETTLE 정산 보드에 공개.
+    player.roundTradesCashFlow -= cost;
     // 주가 임팩트: +매수면 ↑, -매도면 ↓.
     setPriceAndRecord(co, applyImpact(co.price, n, co.sharesOutstanding));
     this.broadcastSnapshot();
@@ -791,6 +793,7 @@ export class GameRoom {
       seedInvested: 0,
       purchasedInfos: [],
       isInvestor: false,
+      roundTradesCashFlow: 0,
       connected: true,
     };
     this.state.players.push(player);
@@ -817,6 +820,7 @@ export class GameRoom {
       seedInvested: 0,
       purchasedInfos: [],
       isInvestor: false,
+      roundTradesCashFlow: 0,
       isBot: true,
       connected: true,
     });
@@ -1001,6 +1005,8 @@ export class GameRoom {
       p.declaration = undefined;
       p.purchasedInfos = [];
       p.investorInsiderInfo = undefined;
+      // 이번 회차 매매 순손익 카운터 리셋 (SETTLE 보드에서 공개될 유일한 재무 지표).
+      p.roundTradesCashFlow = 0;
 
       if (p.isInvestor || !this.state.companies[p.id]) {
         // 투자자: 자기 회사 없음 → privateInfo 없음.
@@ -1102,6 +1108,7 @@ export class GameRoom {
           continue;
         }
         p.cash -= cost;
+        p.roundTradesCashFlow -= cost;
         p.holdings[o.companyOwnerId] = after;
         netByCo.set(
           o.companyOwnerId,
@@ -1331,6 +1338,7 @@ export class GameRoom {
       p.purchasedInfos = [];
       p.isInvestor = false;
       p.investorInsiderInfo = undefined;
+      p.roundTradesCashFlow = 0;
     }
     this.state.companies = {};
     this.state.exitOffers = [];
@@ -1504,6 +1512,7 @@ export class GameRoom {
       headline,
       detail,
       tone,
+      round: this.state.round,
       spotlight: extras?.spotlight,
       flavorQuote: extras?.flavorQuote,
       spotlightTone: extras?.spotlightTone,

@@ -1513,7 +1513,7 @@ export default function GameView({
             <div className="flex flex-col gap-3">
               <div className="rounded-card border-2 border-info bg-info/10 p-3">
                 <p className="text-xs text-neutral">🔔 회차 {state.round} 장 마감</p>
-                <p className="text-lg font-medium">최종 종가</p>
+                <p className="text-lg font-medium">🌡️ 최종 종가 · 회사 분위기</p>
                 <ul className="mt-2 flex flex-col gap-1">
                   {state.players
                     .filter((p) => state.companies[p.id])
@@ -1521,18 +1521,42 @@ export default function GameView({
                       const co = state.companies[p.id];
                       const prev = co.prevSettlePrice ?? co.price;
                       const pct = prev > 0 ? ((co.price - prev) / prev) * 100 : 0;
+                      const mood =
+                        pct > 15
+                          ? "🔥"
+                          : pct > 5
+                            ? "📈"
+                            : pct >= -5
+                              ? "➡️"
+                              : pct >= -15
+                                ? "📉"
+                                : "💀";
+                      const moodLabel =
+                        pct > 15
+                          ? "폭등"
+                          : pct > 5
+                            ? "상승"
+                            : pct >= -5
+                              ? "보합"
+                              : pct >= -15
+                                ? "하락"
+                                : "폭락";
                       return (
                         <li
                           key={p.id}
-                          className="flex justify-between text-sm"
+                          className="flex justify-between text-sm items-center"
                         >
-                          <span>
-                            <span className="mascot mr-1">
-                              {<SectorIcon sector={co.sector} size={24} />}
+                          <span className="flex items-center gap-1">
+                            <span className="text-base">{mood}</span>
+                            <span className="mascot">
+                              {<SectorIcon sector={co.sector} size={20} />}
                             </span>
-                            {co.name}
+                            <span className="truncate">{co.name}</span>
+                            <span className="text-[10px] text-neutral">
+                              {moodLabel}
+                            </span>
                           </span>
-                          <span className="tabular-nums">
+                          <span className="tabular-nums whitespace-nowrap">
                             {fmt(co.price)}{" "}
                             <span
                               className={
@@ -1552,7 +1576,173 @@ export default function GameView({
                     })}
                 </ul>
               </div>
-              <p className="text-sm text-neutral">📊 회차 {state.round} 결과</p>
+
+              {/* 📰 이번 회차 뉴스 요약 — round 태그된 이벤트만 필터 */}
+              {(() => {
+                const roundNews = state.newsEvents.filter(
+                  (n) => n.round === state.round
+                );
+                if (roundNews.length === 0) return null;
+                return (
+                  <div className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2">
+                    <p className="text-sm font-medium">
+                      📰 이번 회차 뉴스 · {roundNews.length}건
+                    </p>
+                    <ul className="flex flex-col gap-1.5">
+                      {roundNews.map((n) => (
+                        <li
+                          key={n.id}
+                          className={`text-xs rounded-element px-2 py-1.5 border ${
+                            n.tone === "good"
+                              ? "border-success/40 bg-success/10"
+                              : n.tone === "bad"
+                                ? "border-danger/40 bg-danger/10"
+                                : "border-cardEdge bg-paper"
+                          }`}
+                        >
+                          <span className="text-sm mr-1">{n.emoji}</span>
+                          <span className="font-medium">{n.headline}</span>
+                          {n.detail && (
+                            <span className="block text-neutral mt-0.5">
+                              {n.detail}
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })()}
+
+              {/* 🔬 연구/기술 성과 — lastResearchOutcome 있는 회사만 */}
+              {(() => {
+                const researched = state.players
+                  .map((p) => {
+                    const co = state.companies[p.id];
+                    if (!co || !co.lastResearchOutcome) return null;
+                    return { player: p, co };
+                  })
+                  .filter(
+                    (x): x is { player: NonNullable<typeof x>["player"]; co: NonNullable<typeof x>["co"] } =>
+                      !!x
+                  );
+                if (researched.length === 0) return null;
+                return (
+                  <div className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2">
+                    <p className="text-sm font-medium">🔬 연구 · 기술 성과</p>
+                    <ul className="flex flex-col gap-1">
+                      {researched.map(({ player, co }) => {
+                        const outcome = co.lastResearchOutcome!;
+                        const label =
+                          outcome === "jackpot"
+                            ? { emoji: "🎉", txt: "대성공", cls: "text-success" }
+                            : outcome === "success"
+                              ? { emoji: "🔬", txt: "성공", cls: "text-success" }
+                              : { emoji: "💧", txt: "실패", cls: "text-neutral" };
+                        return (
+                          <li
+                            key={player.id}
+                            className="flex items-center justify-between text-sm"
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <span className="mascot">
+                                {<SectorIcon sector={co.sector} size={20} />}
+                              </span>
+                              <span className="truncate">
+                                {co.name}
+                                <span className="ml-1 text-[10px] text-neutral">
+                                  Lv.{co.techLevel}
+                                </span>
+                              </span>
+                            </span>
+                            <span className={`text-sm font-medium ${label.cls}`}>
+                              {label.emoji} {label.txt}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                );
+              })()}
+
+              {/* 💰 이번 회차 매매 순손익 랭킹 — 총자산은 은닉, 이 값만 공개 */}
+              <div className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2">
+                <p className="text-sm font-medium">💰 이번 회차 매매 순손익</p>
+                <p className="text-[10px] text-neutral">
+                  매도 대금 − 매수 대금. 양수 = 순매도, 음수 = 순매수.
+                  총자산은 비공개.
+                </p>
+                <ul className="flex flex-col gap-1">
+                  {[...state.players]
+                    .sort(
+                      (a, b) =>
+                        (b.roundTradesCashFlow ?? 0) - (a.roundTradesCashFlow ?? 0)
+                    )
+                    .map((p, idx) => {
+                      const flow = p.roundTradesCashFlow ?? 0;
+                      const isMe = p.id === selfId;
+                      const co = state.companies[p.id];
+                      const rankBadge =
+                        idx === 0 && flow > 0
+                          ? "🥇"
+                          : idx === 1 && flow > 0
+                            ? "🥈"
+                            : idx === 2 && flow > 0
+                              ? "🥉"
+                              : "";
+                      return (
+                        <li
+                          key={p.id}
+                          className={`flex items-center justify-between text-sm rounded-element px-2 py-1.5 ${
+                            isMe ? "bg-accentSoft border border-warning" : ""
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            {rankBadge && (
+                              <span className="text-base">{rankBadge}</span>
+                            )}
+                            {co && (
+                              <span className="mascot">
+                                {<SectorIcon sector={co.sector} size={20} />}
+                              </span>
+                            )}
+                            {p.isBot && (
+                              <span className="text-xs">🤖</span>
+                            )}
+                            <span className="truncate">
+                              {p.nickname}
+                              {isMe && (
+                                <span className="ml-1 text-xs text-warning">
+                                  (나)
+                                </span>
+                              )}
+                              {p.isInvestor && (
+                                <span className="ml-1 text-[10px] text-neutral">
+                                  💼
+                                </span>
+                              )}
+                            </span>
+                          </span>
+                          <span
+                            className={`tabular-nums font-medium ${
+                              flow > 0
+                                ? "text-success"
+                                : flow < 0
+                                  ? "text-danger"
+                                  : "text-neutral"
+                            }`}
+                          >
+                            {flow > 0 ? "+" : flow < 0 ? "" : "±"}
+                            {fmt(flow)}
+                          </span>
+                        </li>
+                      );
+                    })}
+                </ul>
+              </div>
+
+              <p className="text-sm text-neutral">📊 회차 {state.round} 상세</p>
               {state.players
                 .filter((other) => state.companies[other.id])
                 .map((other) => {
@@ -1643,7 +1833,7 @@ export default function GameView({
                 })}
               {self && (
                 <div className="rounded-card border-2 border-info bg-info/5 p-3">
-                  <p className="text-xs text-neutral">내 자산 (총)</p>
+                  <p className="text-xs text-neutral">🔒 내 자산 (본인만 표시)</p>
                   <p className="text-2xl font-medium tabular-nums">
                     {fmt(
                       self.cash +

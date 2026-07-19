@@ -107,6 +107,10 @@ export interface PlayerState {
   // 테스트용 봇 여부 (SPEC 1.0.5).
   isBot?: boolean;
   connected: boolean;
+  // 공개: 이번 회차 매매 순현금 흐름 (매도 대금 − 매수 대금).
+  // 양수 = 매도 우세 / 음수 = 매수 우세. 총자산 은닉을 위해 이것만 SETTLE에 공개.
+  // POSITION 체결 · TRADE 실시간 매매 모두 반영. INFO 진입 시 0으로 리셋.
+  roundTradesCashFlow: number;
 }
 
 export interface GameState {
@@ -138,6 +142,9 @@ export interface GameState {
     headline: string;
     detail?: string;
     tone: "good" | "bad" | "neutral";
+    // 이 이벤트가 어느 회차에 발생했는지. SETTLE 정산 보드에서 회차별 필터에 사용.
+    // 0 이면 회차 시작 전(SETUP 등)에 발생한 시스템 이벤트.
+    round?: number;
     // 큰 오버레이 모달로 표시할 이벤트 (예: 회사 매각 성사, 부활 IPO).
     // true 이면 우측 상단 뉴스 스택에는 안 뜨고 SpotlightModal 로만 렌더.
     spotlight?: boolean;
