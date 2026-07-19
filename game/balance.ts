@@ -10,9 +10,9 @@ export const BALANCE = {
   // 새 연구 시스템 (SPEC 3.6.5): 관리 페이즈에서 3단계 투자로 대성공/성공/실패.
   // 1회차 이후 MANAGE 부터 사용. 창업 출자의 자동 잭팟 확률은 이걸로 대체됨.
   researchTiers: [
-    { cost: 1_000_000, jackpot: 0.05, success: 0.25 }, // 실패 70%
-    { cost: 3_000_000, jackpot: 0.15, success: 0.45 }, // 실패 40%
-    { cost: 5_000_000, jackpot: 0.3, success: 0.55 }, // 실패 15%
+    { cost: 500_000, jackpot: 0.05, success: 0.25 }, // 실패 70%
+    { cost: 1_500_000, jackpot: 0.15, success: 0.45 }, // 실패 40%
+    { cost: 2_500_000, jackpot: 0.3, success: 0.55 }, // 실패 15%
   ] as const,
   researchJackpotRange: [0.4, 0.6] as const, // 대성공 시 +40~60%
   researchSuccessRange: [0.1, 0.2] as const, // 성공 시 +10~20%
@@ -35,7 +35,7 @@ export const BALANCE = {
   nationBuyoutRate: 0.5,
   // NPC 인수 제안 확률/가격 (매 MANAGE 진입 시 회사별로 계산)
   //   기본 확률 30% + 신뢰도×5% + 기술레벨×3% + 종반보너스(회차 ≤3 남으면 +20%)
-  offerBaseChance: 0.3,
+  offerBaseChance: 0.15,
   offerTrustBonus: 0.05,
   offerTechBonus: 0.03,
   offerEndgameBonus: 0.2,
@@ -85,12 +85,12 @@ export const BALANCE = {
     30_000_000, // ★5
   ] as const,
   bankInterestByTrust: [
-    0.22, // ★0
-    0.17, // ★1
-    0.13, // ★2
-    0.10, // ★3
-    0.07, // ★4
-    0.05, // ★5
+    0.17, // ★0
+    0.13, // ★1
+    0.10, // ★2
+    0.07, // ★3
+    0.05, // ★4
+    0.03, // ★5
   ] as const,
   // 미납 카운트 3회 도달 시 압류. 이자 정상 상환하면 카운트 리셋(0).
   bankMissForForeclosure: 3,
@@ -110,6 +110,72 @@ export const BALANCE = {
   investorTaxRate: 0.20,
   // 세금 뉴스 노출 임계값 (이 값 이상 과세 시 뉴스 팝업).
   investorTaxNewsThreshold: 2_000_000,
+
+  // === 특별 이벤트 회차 ===
+  // 5회차: 레버리지 회차 (이번 회차 최종 주가 변동률에 배수 적용)
+  leverageEventRound: 5,
+  // 배수 후보 + 가중치. 2배가 흔하고 3배는 희귀.
+  leverageMultipliers: [
+    { multiplier: 2.0, weight: 0.5, label: "2배" },
+    { multiplier: 2.5, weight: 0.3, label: "2.5배" },
+    { multiplier: 3.0, weight: 0.2, label: "3배" },
+  ] as const,
+  // 7회차: 블랙스완 이벤트 (기존 글로벌 이벤트 대체, 5종 균등)
+  bigEventRound: 7,
+  // 각 이벤트 컨셉·강도·톤. 각각 균등 확률.
+  //   kind: global(모든 회사) / sectorCrash(대상 섹터만 강타) / sectorBoom / chaos(회사별 랜덤)
+  //   magnitudeRange / targetRange / otherRange / perCompanyRange 는 kind 별 필요값
+  bigEvents: [
+    {
+      key: "ZOMBIE",
+      label: "좀비 바이러스 대유행",
+      emoji: "🧟",
+      kind: "global" as const,
+      magnitudeRange: [-0.5, -0.3] as const,
+      trustDelta: -1,
+      quote: "좀비 바이러스가 세계를 덮쳤다. 소비자가 좀비가 되어 지갑을 못 연다.",
+      tone: "bad" as const,
+    },
+    {
+      key: "CRYPTO",
+      label: "비트코인 초광풍",
+      emoji: "🎰",
+      kind: "global" as const,
+      magnitudeRange: [0.3, 0.5] as const,
+      trustDelta: 1,
+      quote: "가상화폐 광풍이 시장 전체를 흥청망청 만들었다.",
+      tone: "good" as const,
+    },
+    {
+      key: "METEOR",
+      label: "메테오 낙하",
+      emoji: "☄️",
+      kind: "sectorCrash" as const,
+      targetRange: [-0.7, -0.5] as const,
+      otherRange: [-0.15, -0.05] as const,
+      quote: "○○ 공장 밀집지에 메테오가 떨어졌다. 폐허.",
+      tone: "bad" as const,
+    },
+    {
+      key: "ALIEN",
+      label: "외계인 독점 계약",
+      emoji: "👽",
+      kind: "sectorBoom" as const,
+      targetRange: [0.5, 0.8] as const,
+      otherRange: [-0.15, -0.05] as const,
+      quote: "외계 문명이 ○○ 산업과 독점 계약을 체결했다.",
+      tone: "good" as const,
+    },
+    {
+      key: "MEME",
+      label: "혼돈의 밈 폭발",
+      emoji: "🎪",
+      kind: "chaos" as const,
+      perCompanyRange: [-0.4, 0.5] as const,
+      quote: "각 회사에 대한 밈이 SNS를 삼켰다. 시장이 완전 혼돈.",
+      tone: "neutral" as const,
+    },
+  ] as const,
 };
 
 // 게임 규칙 상수 (SPEC 1장).

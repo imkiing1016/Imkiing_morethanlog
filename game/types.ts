@@ -176,6 +176,25 @@ export interface PendingGlobalEvent {
   headline: string;
 }
 
+// 7회차 블랙스완 이벤트 스냅샷. 기존 GlobalEvent 를 대체함.
+// INFO 진입 시 결정 → SETTLE 에서 적용 → clear.
+export interface PendingBigEvent {
+  key: string; // BALANCE.bigEvents.key (ZOMBIE / CRYPTO / METEOR / ALIEN / MEME)
+  label: string;
+  emoji: string;
+  quote: string;
+  kind: "global" | "sectorCrash" | "sectorBoom" | "chaos";
+  // global 케이스
+  magnitude?: number;
+  trustDelta?: number;
+  // sectorCrash / sectorBoom 케이스
+  targetSector?: Sector;
+  targetMagnitude?: number;
+  otherMagnitude?: number;
+  // chaos 케이스 — 회사별 개별 배수 (미리 결정)
+  perCompany?: Record<string, number>;
+}
+
 export interface GameState {
   roomCode: string;
   phase: Phase;
@@ -188,6 +207,10 @@ export interface GameState {
   exitOffers: ExitOffer[];
   newsEvents: NewsEvent[];
   pendingGlobalEvent?: PendingGlobalEvent;
+  // 5회차 레버리지 배수 (2/2.5/3). INFO 진입 시 결정 → SETTLE 최종 변동률에 곱함 → clear.
+  pendingLeverage?: number;
+  // 7회차 블랙스완 이벤트. INFO 진입 시 결정 → SETTLE에서 pendingGlobalEvent 대신 적용 → clear.
+  pendingBigEvent?: PendingBigEvent;
   // 평균회귀용: 직전 회차에 누적 가격 변동률이 가장 컸던 섹터(과열 응징).
   lastHotSector?: Sector;
   // 게임 종료 시 최종 순위(총자산 기준). ENDED 진입 시 서버에서 계산해 채운다.

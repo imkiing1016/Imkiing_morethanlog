@@ -1,11 +1,16 @@
 import { BALANCE, NEWS_LIMIT, ROOM, SHARES_OUTSTANDING } from "./balance";
-import { ROUND_PHASES, SECTORS } from "./types";
+import { ROUND_PHASES, SECTORS, SECTOR_LABELS } from "./types";
 import { clampTrust, computeStocksValue, getManageContext } from "./helpers";
 import { pickHeadline } from "./logic/headlines";
 import { applyImpact, setPriceAndRecord } from "./logic/pricing";
 import { executeCompanyExit, generateExitOffers, type PushNewsFn } from "./logic/exit";
 import { processBankingSettle, loanLimitFor, loanRateFor } from "./logic/bank";
 import { computeFinalRankings } from "./logic/rankings";
+import {
+  applyBigEventOnSettle,
+  applyLeverageOnSettle,
+  rollSpecialEventsOnInfo,
+} from "./logic/bigEvents";
 import type {
   ClientMessage,
   Declaration,
@@ -853,6 +858,8 @@ export class GameRoom {
       co.pricePoints = [co.price];
     }
     this.rollGlobalEvent();
+    // 5/7회차 특별 이벤트 결정 + 예고 스포트라이트.
+    rollSpecialEventsOnInfo(this.state, this.pushNewsCallback(), SECTOR_LABELS);
   }
 
   // 평균회귀: 직전 회차 과열 섹터에 역풍 가중치 2배.
@@ -958,25 +965,33 @@ export class GameRoom {
       co.prevSettlePrice = co.price;
       co.prevSettleTrust = co.trust;
     }
-    // 1) 글로벌 이벤트: 대상 섹터의 모든 회사 주가에 일괄 ±
-    const ge = this.state.pendingGlobalEvent;
+    // 1) 이벤트: 블랙스완(7회차) 있으면 그것만, 없으면 일반 글로벌 이벤트.
     const startPrices: Record<string, number> = {};
     for (const co of Object.values(this.state.companies)) {
       startPrices[co.ownerId] = co.price;
     }
-    if (ge) {
-      for (const co of Object.values(this.state.companies)) {
-        if (co.sector === ge.sector) {
-          setPriceAndRecord(
-            co,
-            Math.max(1, Math.round(co.price * (1 + ge.magnitude)))
-          );
+    const bigEventApplied = applyBigEventOnSettle(
+      this.state,
+      this.pushNewsCallback(),
+      SECTOR_LABELS
+    );
+    if (!bigEventApplied) {
+      // 기존 GlobalEvent 처리 (섹터 지정 이벤트).
+      const ge = this.state.pendingGlobalEvent;
+      if (ge) {
+        for (const co of Object.values(this.state.companies)) {
+          if (co.sector === ge.sector) {
+            setPriceAndRecord(
+              co,
+              Math.max(1, Math.round(co.price * (1 + ge.magnitude)))
+            );
+          }
         }
+        this.state.log.push({
+          round: this.state.round,
+          text: `🌐 ${ge.headline} ${(ge.magnitude * 100).toFixed(1)}%`,
+        });
       }
-      this.state.log.push({
-        round: this.state.round,
-        text: `🌐 ${ge.headline} ${(ge.magnitude * 100).toFixed(1)}%`,
-      });
     }
 
     // 2) 개인 이벤트 + 신뢰도 + 감사 + 연구 (회사별 루프)
@@ -1091,9 +1106,10 @@ export class GameRoom {
     }
     this.state.lastHotSector = hot;
 
+    // 3.5) 5회차 레버리지 배수 적용 — 회사별 최종 변동률에 배수 곱함.
+    applyLeverageOnSettle(this.state, this.pushNewsCallback());
+
     // 4) 은행 시스템 — 이자 부과, 미납 처리, 압류 판정.
-    //    투자자: 매매 이익세만 부과 (대출 없음).
-    //    회사 소유자: 이자 자동 차감 → 부족 시 미납 카운트 +1, 카운트 3 도달 시 압류.
     this.processBankingSettle();
 
     // 5) 글로벌 이벤트 소비
@@ -1156,6 +1172,8 @@ export class GameRoom {
     this.state.phase = "LOBBY";
     this.state.phaseDeadline = undefined;
     this.state.pendingGlobalEvent = undefined;
+    this.state.pendingLeverage = undefined;
+    this.state.pendingBigEvent = undefined;
     this.state.lastHotSector = undefined;
     this.state.finalRankings = undefined;
     this.state.log = [{ round: 0, text: "리매치 준비" }];
