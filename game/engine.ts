@@ -1,5 +1,11 @@
-import { BALANCE, ROOM } from "./balance";
+import { BALANCE, NEWS_LIMIT, ROOM, SHARES_OUTSTANDING } from "./balance";
 import { ROUND_PHASES, SECTORS } from "./types";
+import { clampTrust, computeStocksValue, getManageContext } from "./helpers";
+import { pickHeadline } from "./logic/headlines";
+import { applyImpact, setPriceAndRecord } from "./logic/pricing";
+import { executeCompanyExit, generateExitOffers, type PushNewsFn } from "./logic/exit";
+import { processBankingSettle, loanLimitFor, loanRateFor } from "./logic/bank";
+import { computeFinalRankings } from "./logic/rankings";
 import type {
   ClientMessage,
   Declaration,
@@ -16,123 +22,7 @@ export interface Conn {
   send(data: string): void;
 }
 
-const SHARES_OUTSTANDING = 1000; // 전원 동일 → 시작 시총 동일 (price × shares)
-const PRICE_HISTORY_LIMIT = 40; // 회사별 가격 히스토리 최대 보관 점수
-const NEWS_LIMIT = 20; // 뉴스 이벤트 최대 보관 (오래된 것부터 제거)
 let nextNewsId = 1;
-
-// 인수자별 매각 성사 순간 flavor quote — SpotlightModal 로 큰 인용구 표시.
-// balance 수치가 아니라 연출용 대사이므로 engine.ts 안에 둠. 인수자 key ↔ 대사 배열.
-const BUYER_QUOTES: Record<string, string[]> = {
-  NATION: [
-    "국가가 인수합니다. 상장폐지 절차 진행.",
-    "공공의 이익을 위해 접수했습니다.",
-    "국유화 완료. 시장에서 지웁니다.",
-  ],
-  HAWK: [
-    "네 회사, 뜯어서 팔면 딱이야.",
-    "월스트리트에서 왔다. 정리하지.",
-    "숫자만 봐도 답이 나오네. 인수.",
-  ],
-  HEDGE: [
-    "네 섹터 자체를 갈아엎어 주지.",
-    "약점 다 보인다. 헤지펀드가 접수한다.",
-    "이 판은 이제 우리 판이야.",
-  ],
-  CHAEBOL: [
-    "아버지가 사드리라 하셨어.",
-    "그룹 포트폴리오에 얹지.",
-    "그래, 얼마면 되겠어?",
-  ],
-  VC: [
-    "당신의 비전에 투자합니다!",
-    "이거… 유니콘 될 각인데?",
-    "다음 라운드까지 우리가 챙깁니다.",
-  ],
-  MYSTERY: [
-    "…(익명의 매수자로부터 도착한 서류)",
-    "누가 산 건지는 아무도 모른다.",
-    "프리미엄에 접수. 질문은 사절.",
-  ],
-  BANK: [
-    "채무불이행. 담보권을 집행합니다.",
-    "안타깝지만 자산은 은행 소유입니다.",
-    "약속을 지키지 못한 대가입니다.",
-  ],
-};
-
-function pickQuote(buyerKey: string): string {
-  const list = BUYER_QUOTES[buyerKey] ?? BUYER_QUOTES.MYSTERY;
-  return list[Math.floor(Math.random() * list.length)];
-}
-
-// 인수자별 오버레이 톤. VC/CHAEBOL/MYSTERY 는 축제, HAWK/HEDGE 는 위협적, NATION 은 담담.
-function buyerSpotlightTone(
-  buyerKey: string
-): "celebration" | "hostile" | "somber" | "rebirth" {
-  if (buyerKey === "HAWK" || buyerKey === "HEDGE" || buyerKey === "BANK")
-    return "hostile";
-  if (buyerKey === "NATION") return "somber";
-  return "celebration";
-}
-
-// 가격을 갱신하고 히스토리에 push. 한도 초과 시 가장 오래된 값 제거.
-function setPriceAndRecord(
-  co: { price: number; pricePoints: number[] },
-  newPrice: number
-) {
-  co.price = newPrice;
-  co.pricePoints.push(newPrice);
-  if (co.pricePoints.length > PRICE_HISTORY_LIMIT) {
-    co.pricePoints.shift();
-  }
-}
-
-// 글로벌 이벤트 헤드라인 (섹터 × 방향). SPEC 3.6 — 시장 전체 뉴스.
-const HEADLINES: Record<Sector, { up: string[]; down: string[] }> = {
-  IT_GAME: {
-    up: ["AI 붐 — IT/게임 호조", "신작 흥행 — IT/게임 강세"],
-    down: ["사이버 공격 — IT/게임 충격", "규제 강화 — IT/게임 침체"],
-  },
-  BEAUTY: {
-    up: ["K뷰티 글로벌 인기 — 뷰티 호조", "한류 효과 — 뷰티 강세"],
-    down: ["원료비 급등 — 뷰티 부진", "수출 둔화 — 뷰티 약세"],
-  },
-  CONSTRUCTION: {
-    up: ["인프라 부양 — 건설 호조", "주택 공급 확대 — 건설 강세"],
-    down: ["철근 가격 급락 — 건설 부진", "분양 미달 — 건설 약세"],
-  },
-  RETAIL: {
-    up: ["소비 회복 — 유통 호조", "온라인 쇼핑 폭증 — 유통 강세"],
-    down: ["물류 대란 — 유통 부진", "소비 위축 — 유통 약세"],
-  },
-  BIO: {
-    up: ["신약 승인 — 바이오 호조", "R&D 보조금 확대 — 바이오 강세"],
-    down: ["임상 실패 — 바이오 부진", "감염병 잠잠 — 바이오 약세"],
-  },
-  DEFENSE: {
-    up: ["방산 수출 호조 — 방산 강세", "안보 긴장 고조 — 방산 호조"],
-    down: ["방산 예산 삭감 — 방산 부진", "평화 협정 — 방산 약세"],
-  },
-};
-
-function pickHeadline(sector: Sector, isUp: boolean): string {
-  const list = HEADLINES[sector][isUp ? "up" : "down"];
-  return list[Math.floor(Math.random() * list.length)];
-}
-
-// 거래량 → 주가 임팩트. shares > 0 은 매수(상승), < 0 은 매도(하락).
-// 변동률 = priceImpactCoef × (체결주식 / sharesOutstanding)
-function applyImpact(
-  price: number,
-  shares: number,
-  sharesOutstanding: number
-): number {
-  if (sharesOutstanding <= 0) return price;
-  const ratio = shares / sharesOutstanding;
-  const newPrice = price * (1 + BALANCE.priceImpactCoef * ratio);
-  return Math.max(1, Math.round(newPrice));
-}
 
 // 페이즈 진입 시 남길 로그 문구 (사람이 읽는 한 줄).
 const PHASE_LOG: Record<Phase, string> = {
@@ -392,11 +282,9 @@ export class GameRoom {
 
   // SPEC 3.3 관리 페이즈: 기술 레벨 업그레이드. 회차당 1회, 최대 레벨 5.
   private handleTechUpgrade(id: string) {
-    if (this.state.phase !== "MANAGE") return;
-    const player = this.state.players.find((p) => p.id === id);
-    if (!player) return;
-    const co = this.state.companies[id];
-    if (!co) return;
+    const ctx = getManageContext(this.state, id);
+    if (!ctx) return;
+    const { player, co } = ctx;
     if (co.techLevel >= 5) return;
     const cost = BALANCE.techUpgradeCost(co.techLevel);
     if (player.cash < cost) return;
@@ -413,11 +301,9 @@ export class GameRoom {
   // tier 0/1/2 (100만/300만/500만). 확률에 따라 대성공/성공/실패.
   // 회차당 1회. 결과는 즉시 회사 주가에 적용.
   private handleResearch(id: string, tier: 0 | 1 | 2) {
-    if (this.state.phase !== "MANAGE") return;
-    const player = this.state.players.find((p) => p.id === id);
-    if (!player) return;
-    const co = this.state.companies[id];
-    if (!co) return;
+    const ctx = getManageContext(this.state, id);
+    if (!ctx) return;
+    const { player, co } = ctx;
     if (co.researchDoneThisManage) return; // 이미 이번 회차 연구함
     const config = BALANCE.researchTiers[tier];
     if (!config) return;
@@ -475,11 +361,9 @@ export class GameRoom {
 
   // SPEC 3.4 관리 페이즈: 사업 전환. 시장가액의 30% 비용, 신뢰도 3 리셋.
   private handlePivot(id: string, newSector: Sector) {
-    if (this.state.phase !== "MANAGE") return;
-    const player = this.state.players.find((p) => p.id === id);
-    if (!player) return;
-    const co = this.state.companies[id];
-    if (!co) return;
+    const ctx = getManageContext(this.state, id);
+    if (!ctx) return;
+    const { player, co } = ctx;
     if (!SECTORS.includes(newSector)) return;
     if (co.sector === newSector) return; // 같은 섹터 불가
     const marketCap = co.price * co.sharesOutstanding;
@@ -500,11 +384,9 @@ export class GameRoom {
 
   // 국가 매각: 시장가의 50% 즉시 지급, 회사 소멸.
   private handleSellToNation(id: string) {
-    if (this.state.phase !== "MANAGE") return;
-    const player = this.state.players.find((p) => p.id === id);
-    if (!player) return;
-    const co = this.state.companies[id];
-    if (!co) return;
+    const ctx = getManageContext(this.state, id);
+    if (!ctx) return;
+    const { player, co } = ctx;
     const marketCap = co.price * co.sharesOutstanding;
     const salePrice = Math.floor(marketCap * BALANCE.nationBuyoutRate);
     this.executeCompanyExit(player, co, salePrice, "NATION", "🏛️", "국가");
@@ -512,11 +394,9 @@ export class GameRoom {
 
   // 특정 NPC 인수 제안 수락: offerId 로 매칭.
   private handleAcceptExitOffer(id: string, offerId: number) {
-    if (this.state.phase !== "MANAGE") return;
-    const player = this.state.players.find((p) => p.id === id);
-    if (!player) return;
-    const co = this.state.companies[id];
-    if (!co) return;
+    const ctx = getManageContext(this.state, id);
+    if (!ctx) return;
+    const { player, co } = ctx;
     const offer = this.state.exitOffers.find(
       (o) => o.id === offerId && o.companyOwnerId === id
     );
@@ -531,11 +411,7 @@ export class GameRoom {
     );
   }
 
-  // 공통 로직: 회사 매각 확정 처리.
-  // - 판매자에게 매각가 지급 + 투자자 모드 전환
-  // - 회사가 소멸되어 홀더들에게 매각가/총주식 × 지분 자동 청산
-  // - 같은 섹터 다른 회사들에 시장 파장 적용
-  // - 회사 관련 제안·회사 자체 삭제
+  // 공통 로직: 회사 매각 확정 처리. logic/exit.ts 로 위임.
   private executeCompanyExit(
     seller: PlayerState,
     co: NonNullable<GameState["companies"][string]>,
@@ -544,211 +420,44 @@ export class GameRoom {
     buyerIcon: string,
     buyerLabel: string
   ) {
-    const soldCoId = co.ownerId;
-    const soldSector = co.sector;
-    const soldName = co.name;
-
-    // 1) 판매자에게 매각가 지급
-    seller.cash += salePrice;
-    seller.isInvestor = true;
-
-    // 1.5) 자발 매각 시(BANK 이외) 남은 대출 자동 상환.
-    //      BANK 경로는 이미 processBankingSettle 에서 원금 회수 처리 완료.
-    if (buyerKey !== "BANK" && seller.loanBalance > 0) {
-      const takeFromSale = Math.min(seller.loanBalance, seller.cash);
-      seller.cash -= takeFromSale;
-      seller.loanBalance -= takeFromSale;
-      seller.loanMissCount = 0;
-      // 매각가 부족분은 은행이 흡수 (판매자 기존 현금 손대지 않음 = 파산 방지).
-      if (seller.loanBalance > 0) {
-        this.state.log.push({
-          round: this.state.round,
-          text: `🏦 ${seller.nickname} 매각 상환 · 대출 잔여 ${seller.loanBalance.toLocaleString()}원은 은행 손실 흡수(탕감)`,
-        });
-        seller.loanBalance = 0;
-      } else if (takeFromSale > 0) {
-        this.state.log.push({
-          round: this.state.round,
-          text: `🏦 ${seller.nickname} 매각가로 대출 완납 −${takeFromSale.toLocaleString()}원`,
-        });
-      }
-    }
-
-    // 2) 다른 홀더에게 자동 청산 (매각가 × 지분비율)
-    const pricePerShare = Math.floor(salePrice / co.sharesOutstanding);
-    for (const holder of this.state.players) {
-      const held = holder.holdings[soldCoId] ?? 0;
-      if (held > 0) {
-        holder.cash += held * pricePerShare;
-        delete holder.holdings[soldCoId];
-      }
-    }
-
-    // 3) 회사 소멸 + 그 회사에 대한 남은 제안들 제거
-    delete this.state.companies[soldCoId];
-    this.state.exitOffers = this.state.exitOffers.filter(
-      (o) => o.companyOwnerId !== soldCoId
-    );
-
-    // 4) 같은 섹터 다른 회사들에 시장 파장
-    const ripple =
-      (BALANCE.ripple as Record<string, number>)[buyerKey] ?? 0;
-    if (ripple !== 0) {
-      for (const other of Object.values(this.state.companies)) {
-        if (other.sector === soldSector) {
-          setPriceAndRecord(
-            other,
-            Math.max(1, Math.round(other.price * (1 + ripple)))
-          );
-        }
-      }
-    }
-
-    // 5) 로그 + 뉴스
-    this.state.log.push({
-      round: this.state.round,
-      text: `${buyerIcon} ${soldName} 매각 → ${buyerLabel} (${salePrice.toLocaleString()}원, 시장가 ${(
-        (salePrice / (co.price * co.sharesOutstanding)) *
-        100
-      ).toFixed(0)}%)`,
-    });
-    this.pushNews(
+    executeCompanyExit(
+      this.state,
+      this.pushNewsCallback(),
+      seller,
+      co,
+      salePrice,
+      buyerKey,
       buyerIcon,
-      `${soldName} 매각 성사`,
-      `${buyerLabel}가 ${salePrice.toLocaleString()}원에 인수 · 시장 ${
-        ripple > 0 ? "+" : ""
-      }${(ripple * 100).toFixed(0)}% 파장`,
-      ripple > 0 ? "good" : ripple < 0 ? "bad" : "neutral",
-      {
-        spotlight: true,
-        flavorQuote: pickQuote(buyerKey),
-        spotlightTone: buyerSpotlightTone(buyerKey),
-      }
+      buyerLabel
     );
     this.broadcastSnapshot();
   }
 
-  // 매 MANAGE 진입 시 각 회사에 대해 확률적으로 인수 제안 생성.
+  // logic 모듈에 주입하기 위한 pushNews 클로저. this 바인딩 문제 방지.
+  private pushNewsCallback(): PushNewsFn {
+    return (emoji, headline, detail, tone, extras) =>
+      this.pushNews(emoji, headline, detail, tone, extras);
+  }
+
+  // 매 MANAGE 진입 시 회사별 확률적 인수 제안 생성 — logic/exit.ts 로 위임.
   private generateExitOffers() {
-    this.state.exitOffers = [];
-    let idCounter = Date.now(); // unique id per offer
-    const roundsLeft = this.state.maxRounds - this.state.round;
-    const endgameBonus =
-      roundsLeft <= BALANCE.offerEndgameThreshold
-        ? BALANCE.offerEndgameBonus
-        : 0;
-
-    for (const co of Object.values(this.state.companies)) {
-      // 이 회사에 몇 개까지 제안 나올지 결정
-      let numOffers = 0;
-      const chance =
-        BALANCE.offerBaseChance +
-        co.trust * BALANCE.offerTrustBonus +
-        co.techLevel * BALANCE.offerTechBonus +
-        endgameBonus;
-      if (Math.random() < chance) numOffers = 1;
-      // 두번째 제안: 확률 절반
-      if (numOffers > 0 && Math.random() < chance / 2) numOffers = 2;
-      // 세번째: 매우 낮음
-      if (numOffers > 1 && Math.random() < 0.2) numOffers = 3;
-
-      // 조건 통과 인수자 리스트
-      const eligible = BALANCE.exitBuyers.filter((b) => {
-        // Fix TypeScript "as const" - use loose access
-        const bb = b as unknown as {
-          minTrust?: number;
-          minTech?: number;
-          minLie?: number;
-          weight?: number;
-        };
-        if (bb.minTrust !== undefined && co.trust < bb.minTrust) return false;
-        if (bb.minTech !== undefined && co.techLevel < bb.minTech) return false;
-        if (bb.minLie !== undefined && co.lieCount < bb.minLie) return false;
-        return true;
-      });
-
-      // 가중치 룰렛
-      const marketCap = co.price * co.sharesOutstanding;
-      for (let i = 0; i < numOffers; i++) {
-        if (eligible.length === 0) break;
-        const weights = eligible.map((b) => {
-          const w = (b as unknown as { weight?: number }).weight;
-          return w ?? 1;
-        });
-        const total = weights.reduce((a, b) => a + b, 0);
-        let r = Math.random() * total;
-        let picked = eligible[0];
-        for (let k = 0; k < eligible.length; k++) {
-          r -= weights[k];
-          if (r <= 0) {
-            picked = eligible[k];
-            break;
-          }
-        }
-        const [lo, hi] = picked.price;
-        const priceRate = lo + Math.random() * (hi - lo);
-        const price = Math.floor(marketCap * priceRate);
-        this.state.exitOffers.push({
-          id: idCounter++,
-          companyOwnerId: co.ownerId,
-          buyerKey: picked.key,
-          buyerLabel: picked.label,
-          buyerIcon: picked.icon,
-          price,
-          priceRate,
-        });
-        // 같은 인수자 중복 방지
-        const pi = eligible.indexOf(picked);
-        if (pi >= 0) eligible.splice(pi, 1);
-      }
-    }
-
-    // 뉴스 알림: 회사별로 새 제안 왔음 요약
-    const grouped = new Map<string, typeof this.state.exitOffers>();
-    for (const o of this.state.exitOffers) {
-      if (!grouped.has(o.companyOwnerId)) grouped.set(o.companyOwnerId, []);
-      grouped.get(o.companyOwnerId)!.push(o);
-    }
-    for (const [cid, offers] of grouped) {
-      const co = this.state.companies[cid];
-      if (!co) continue;
-      const best = offers.reduce((a, b) => (a.price > b.price ? a : b));
-      this.pushNews(
-        best.buyerIcon,
-        `${co.name} 인수 제안 도착`,
-        `${offers.length}건 · 최고 ${best.buyerLabel} ${(
-          best.priceRate * 100
-        ).toFixed(0)}%`,
-        best.buyerKey === "HEDGE" || best.buyerKey === "HAWK"
-          ? "bad"
-          : "good"
-      );
-    }
+    generateExitOffers(this.state, this.pushNewsCallback());
   }
 
   // 신뢰도에 따른 대출 한도. 회사 없는 투자자는 대출 불가 (0 반환).
+  // loanLimitFor / loanRateFor — logic/bank.ts 위임 래퍼.
   private loanLimitFor(player: PlayerState): number {
-    if (player.isInvestor || !this.state.companies[player.id]) return 0;
-    const co = this.state.companies[player.id];
-    const trust = Math.max(0, Math.min(5, co.trust));
-    return BALANCE.bankLoanLimitByTrust[trust];
+    return loanLimitFor(this.state, player);
   }
-
-  // 신뢰도에 따른 이자율.
   private loanRateFor(player: PlayerState): number {
-    if (player.isInvestor || !this.state.companies[player.id]) return 0;
-    const co = this.state.companies[player.id];
-    const trust = Math.max(0, Math.min(5, co.trust));
-    return BALANCE.bankInterestByTrust[trust];
+    return loanRateFor(this.state, player);
   }
 
   // 관리 페이즈: 대출 실행.
   private handleTakeLoan(id: string, amount: number) {
-    if (this.state.phase !== "MANAGE") return;
-    const player = this.state.players.find((p) => p.id === id);
-    if (!player) return;
-    const co = this.state.companies[id];
-    if (!co) return; // 회사 없는 투자자는 대출 불가
+    const ctx = getManageContext(this.state, id);
+    if (!ctx) return; // 회사 없는 투자자는 대출 불가
+    const { player, co } = ctx;
     const req = Math.floor(Number(amount) || 0);
     if (req <= 0) return;
     const limit = this.loanLimitFor(player);
@@ -831,7 +540,6 @@ export class GameRoom {
       pricePoints: [newPrice],
       lieCount: 0,
       auditedThisRound: false,
-      researchBreakthroughThisRound: false,
       researchDoneThisManage: false,
       lastResearchOutcome: undefined,
     };
@@ -997,7 +705,6 @@ export class GameRoom {
       pricePoints: [BALANCE.startingPrice],
       lieCount: 0,
       auditedThisRound: false,
-      researchBreakthroughThisRound: false,
       researchDoneThisManage: false,
       lastResearchOutcome: undefined,
     };
@@ -1277,7 +984,6 @@ export class GameRoom {
       const co = this.state.companies[p.id];
       if (!co) continue;
       co.auditedThisRound = false; // 매 정산마다 초기화
-      co.researchBreakthroughThisRound = false;
 
       // 이벤트 강도 랜덤. 방향은 본인 privateInfo.
       const [lo, hi] = BALANCE.eventMagnitudeRange;
@@ -1309,7 +1015,7 @@ export class GameRoom {
       if (isTruth) trustDelta = 1;
       else if (isLie) trustDelta = -1;
       // SILENT 는 0
-      co.trust = Math.max(0, Math.min(5, co.trust + trustDelta));
+      co.trust = clampTrust(co.trust + trustDelta);
 
       if (isLie) co.lieCount += 1;
 
@@ -1394,113 +1100,9 @@ export class GameRoom {
     this.state.pendingGlobalEvent = undefined;
   }
 
-  // SETTLE 정산 4단계: 세금 → 이자 → 미납 처리 → 압류 실행.
+  // SETTLE 정산 은행 단계 — logic/bank.ts 로 위임.
   private processBankingSettle() {
-    // 4-1) 투자자 매매 이익세 (roundTradesCashFlow > 0 이면 과세).
-    for (const p of this.state.players) {
-      if (!p.isInvestor) continue;
-      if (p.roundTradesCashFlow <= 0) continue;
-      const tax = Math.floor(p.roundTradesCashFlow * BALANCE.investorTaxRate);
-      if (tax <= 0) continue;
-      // 현금 부족 시: 가능한 만큼만 걷음(파산 방지).
-      const collected = Math.min(tax, p.cash);
-      p.cash -= collected;
-      this.state.log.push({
-        round: this.state.round,
-        text: `📮 ${p.nickname} 매매 이익세 −${collected.toLocaleString()}원 (수익 ${p.roundTradesCashFlow.toLocaleString()}원)`,
-      });
-      if (collected >= BALANCE.investorTaxNewsThreshold) {
-        this.pushNews(
-          "📮",
-          `${p.nickname} 매매 이익세 납부`,
-          `투자자 세금 ${collected.toLocaleString()}원 · 이번 회차 순매도 우세`,
-          "neutral"
-        );
-      }
-    }
-
-    // 4-2) 회사 소유자 이자 부과 (미납 판정 포함).
-    // 압류 대상은 여기서 표시만 하고, 실제 실행은 아래 4-3 에서 loop 끝난 뒤.
-    const foreclosureVictims: Array<{
-      player: PlayerState;
-      co: NonNullable<GameState["companies"][string]>;
-    }> = [];
-    for (const p of this.state.players) {
-      if (p.isInvestor) continue;
-      const co = this.state.companies[p.id];
-      if (!co) continue;
-      if (p.loanBalance <= 0) {
-        // 대출 없으면 미납 카운트도 0 유지.
-        p.loanMissCount = 0;
-        continue;
-      }
-      const rate = this.loanRateFor(p);
-      const interest = Math.floor(p.loanBalance * rate);
-      if (interest <= 0) continue;
-
-      if (p.cash >= interest) {
-        // 정상 상환 → 미납 카운트 리셋 + 이자만 차감(원금 상환은 관리 페이즈에서).
-        p.cash -= interest;
-        p.loanMissCount = 0;
-        this.state.log.push({
-          round: this.state.round,
-          text: `🏦 ${co.name} 이자 −${interest.toLocaleString()}원 (원금 ${p.loanBalance.toLocaleString()}원)`,
-        });
-      } else {
-        // 미납 처리.
-        p.loanMissCount += 1;
-        const missIdx = Math.min(p.loanMissCount - 1, BALANCE.bankMissPenaltyRange.length - 1);
-        const [lo, hi] = BALANCE.bankMissPenaltyRange[missIdx];
-        const drop = lo + Math.random() * (hi - lo);
-        const newPrice = Math.max(1, Math.round(co.price * (1 - drop)));
-        setPriceAndRecord(co, newPrice);
-        co.trust = Math.max(0, co.trust - 1);
-
-        this.state.log.push({
-          round: this.state.round,
-          text: `⚠️ ${co.name} 이자 미납 ${p.loanMissCount}회 — 주가 ${(drop * 100).toFixed(1)}% 하락, 신뢰 −1`,
-        });
-
-        if (p.loanMissCount >= BALANCE.bankMissForForeclosure) {
-          // 압류 예정 (실제 실행은 loop 끝난 뒤).
-          foreclosureVictims.push({ player: p, co });
-        } else {
-          const isMarginCall = p.loanMissCount >= 2;
-          this.pushNews(
-            isMarginCall ? "🚨" : "⚠️",
-            `${co.name} 이자 미납 ${p.loanMissCount}회`,
-            `주가 ${(drop * 100).toFixed(1)}% ↓ · 신뢰 −1${isMarginCall ? " · 마진콜 · 다음 미납이면 압류" : ""}`,
-            "bad"
-          );
-        }
-      }
-    }
-
-    // 4-3) 압류 실행 (executeCompanyExit 재활용, buyerKey = BANK).
-    for (const victim of foreclosureVictims) {
-      // 압류 시 은행이 대출 원금을 회수, 잔여 지분가치는 판매자에게 지급.
-      // 매각가 산정: 시장 시총 기준 (지분 청산 계산은 executeCompanyExit 이 처리).
-      const marketCap = victim.co.price * victim.co.sharesOutstanding;
-      // 은행이 시장가에서 원금 회수하고 나머지 홀더에게 자동 청산.
-      // 판매자에겐 원금 초과분만 지급.
-      const totalRecovery = marketCap;
-      const bankTake = Math.min(victim.player.loanBalance, totalRecovery);
-      const sellerPayout = Math.max(0, totalRecovery - bankTake);
-      victim.player.loanBalance = 0;
-      victim.player.loanMissCount = 0;
-      this.executeCompanyExit(
-        victim.player,
-        victim.co,
-        sellerPayout,
-        "BANK",
-        "🔴",
-        "은행 압류"
-      );
-      this.state.log.push({
-        round: this.state.round,
-        text: `🔴 ${victim.co.name} 은행 압류 — 대출 ${bankTake.toLocaleString()}원 회수, 판매자 잔여 ${sellerPayout.toLocaleString()}원`,
-      });
-    }
+    processBankingSettle(this.state, this.pushNewsCallback());
   }
 
   private onTradeTimeout() {
@@ -1522,37 +1124,9 @@ export class GameRoom {
     this.broadcastSnapshot();
   }
 
-  // 총자산 = 현금 + 보유 주식 평가액 + 내 회사 미보유 지분 평가액 (SPEC 1장)
+  // 총자산 랭킹 — logic/rankings.ts 위임 래퍼.
   private computeFinalRankings() {
-    const rows = this.state.players.map((p) => {
-      const cash = p.cash;
-      let stocksValue = 0;
-      for (const [cid, n] of Object.entries(p.holdings)) {
-        const co = this.state.companies[cid];
-        if (co) stocksValue += n * co.price;
-      }
-      let ownCompanyValue = 0;
-      const myCo = this.state.companies[p.id];
-      if (myCo) {
-        const totalHeld = this.state.players.reduce(
-          (s, other) => s + (other.holdings[p.id] ?? 0),
-          0
-        );
-        const unowned = Math.max(0, myCo.sharesOutstanding - totalHeld);
-        ownCompanyValue = unowned * myCo.price;
-      }
-      const totalAssets = cash + stocksValue + ownCompanyValue;
-      return {
-        playerId: p.id,
-        nickname: p.nickname,
-        totalAssets,
-        cash,
-        stocksValue,
-        ownCompanyValue,
-      };
-    });
-    rows.sort((a, b) => b.totalAssets - a.totalAssets);
-    return rows;
+    return computeFinalRankings(this.state);
   }
 
   // 리매치: 호스트만, ENDED 상태에서 같은 인원으로 로비 복귀. (SPEC 6장 M7)
