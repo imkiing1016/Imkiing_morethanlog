@@ -120,3 +120,8 @@ export const ROOM = {
   maxPlayers: 6,
   defaultMaxRounds: 8,
 };
+
+// 시장/뉴스 저장소 상한 상수. 서버 메모리 제한 방어용.
+export const SHARES_OUTSTANDING = 1000; // 전 회사 동일 → 시작 시총 동일 (price × shares)
+export const PRICE_HISTORY_LIMIT = 40; // 회사별 가격 히스토리 최대 보관 점수
+export const NEWS_LIMIT = 20; // 뉴스 이벤트 최대 보관 (오래된 것부터 제거)

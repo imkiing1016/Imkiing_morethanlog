@@ -73,8 +73,6 @@ export interface Company {
   researchDoneThisManage: boolean;
   // 최근 연구 결과 (UI/뉴스 팝업 표시용). null 이면 아직 연구 없음.
   lastResearchOutcome?: "jackpot" | "success" | "fail";
-  // 하위 호환: 예전 자동 잭팟 필드. 새 시스템에선 안 씀(항상 false) 하지만 타입만 유지.
-  researchBreakthroughThisRound: boolean;
   // SPEC 3.7 세무 조사
   lieCount: number; // 누적 거짓 선언 횟수 (audit 발동 시 0으로 리셋)
   auditedThisRound: boolean; // 이번 정산에서 세무 조사 발동 여부 (UI/로그 표시용)
@@ -121,6 +119,63 @@ export interface PlayerState {
   roundStockBuyAmount: number;
 }
 
+// 스포트라이트 오버레이 톤 (SpotlightModal 색·컨페티 이모지 결정용).
+export type SpotlightTone = "celebration" | "hostile" | "somber" | "rebirth";
+
+// 관리 페이즈마다 회사별로 확률 생성되는 NPC 인수 제안.
+export interface ExitOffer {
+  id: number;
+  companyOwnerId: string; // 대상 회사 (원 소유주)
+  buyerKey: string; // BALANCE.exitBuyers.key
+  buyerLabel: string;
+  buyerIcon: string;
+  price: number; // 절대 금액 (원)
+  priceRate: number; // 시장가 대비 비율 (표시용)
+}
+
+// 시장 뉴스 이벤트. 서버 push, 클라 렌더 (팝업/사이드패널/스포트라이트).
+export interface NewsEvent {
+  id: number;
+  timestamp: number;
+  emoji: string;
+  headline: string;
+  detail?: string;
+  tone: "good" | "bad" | "neutral";
+  // 이 이벤트가 어느 회차에 발생했는지. SETTLE 정산 보드에서 회차별 필터에 사용.
+  // 0 이면 회차 시작 전(SETUP 등)에 발생한 시스템 이벤트.
+  round?: number;
+  // 큰 오버레이 모달로 표시할 이벤트 (예: 회사 매각 성사, 부활 IPO).
+  // true 이면 우측 상단 뉴스 스택에는 안 뜨고 SpotlightModal 로만 렌더.
+  spotlight?: boolean;
+  // 인수자의 한마디 (매각 성사 오버레이용). 있으면 큰 인용구로 표시.
+  flavorQuote?: string;
+  // 오버레이 강조용 색 톤. spotlight 전용.
+  spotlightTone?: SpotlightTone;
+}
+
+// 게임 종료 시 총자산 랭킹 한 행.
+export interface RankingRow {
+  playerId: string;
+  nickname: string;
+  totalAssets: number;
+  cash: number;
+  stocksValue: number;
+  ownCompanyValue: number;
+}
+
+// 게임 로그 한 줄 (하단 로그 스트림용).
+export interface GameLogEntry {
+  round: number;
+  text: string;
+}
+
+// 이번 회차 SETTLE 에서 적용될 글로벌 이벤트 스냅샷.
+export interface PendingGlobalEvent {
+  sector: Sector;
+  magnitude: number;
+  headline: string;
+}
+
 export interface GameState {
   roomCode: string;
   phase: Phase;
@@ -130,51 +185,14 @@ export interface GameState {
   players: PlayerState[];
   companies: Record<string /*ownerId*/, Company>;
   phaseDeadline?: number; // epoch ms, 거래 페이즈 타이머
-  // 매 MANAGE 진입 시 회사별로 랜덤 생성되는 NPC 인수 제안.
-  // 다음 MANAGE 진입 때 사라지고 새로 생성됨. 회사당 최대 offerMaxPending 개.
-  exitOffers: Array<{
-    id: number;
-    companyOwnerId: string; // 대상 회사 (원 소유주)
-    buyerKey: string; // BALANCE.exitBuyers.key
-    buyerLabel: string;
-    buyerIcon: string;
-    price: number; // 절대 금액 (원)
-    priceRate: number; // 시장가 대비 비율 (표시용)
-  }>;
-  // 시장 뉴스 이벤트 스트림 — 우측 상단 팝업 카드로 표시.
-  // 서버가 push, 클라가 최근 N개 렌더 + 오래된 것 자동 dismiss.
-  newsEvents: Array<{
-    id: number;
-    timestamp: number;
-    emoji: string;
-    headline: string;
-    detail?: string;
-    tone: "good" | "bad" | "neutral";
-    // 이 이벤트가 어느 회차에 발생했는지. SETTLE 정산 보드에서 회차별 필터에 사용.
-    // 0 이면 회차 시작 전(SETUP 등)에 발생한 시스템 이벤트.
-    round?: number;
-    // 큰 오버레이 모달로 표시할 이벤트 (예: 회사 매각 성사, 부활 IPO).
-    // true 이면 우측 상단 뉴스 스택에는 안 뜨고 SpotlightModal 로만 렌더.
-    spotlight?: boolean;
-    // 인수자의 한마디 (매각 성사 오버레이용). 있으면 큰 인용구로 표시.
-    flavorQuote?: string;
-    // 오버레이 강조용 색 톤. spotlight 전용.
-    spotlightTone?: "celebration" | "hostile" | "somber" | "rebirth";
-  }>;
-  // 이번 회차 정산에서 적용될 글로벌 이벤트 (INFO 진입 시 결정 → SETTLE 에 적용)
-  pendingGlobalEvent?: { sector: Sector; magnitude: number; headline: string };
+  exitOffers: ExitOffer[];
+  newsEvents: NewsEvent[];
+  pendingGlobalEvent?: PendingGlobalEvent;
   // 평균회귀용: 직전 회차에 누적 가격 변동률이 가장 컸던 섹터(과열 응징).
   lastHotSector?: Sector;
   // 게임 종료 시 최종 순위(총자산 기준). ENDED 진입 시 서버에서 계산해 채운다.
-  finalRankings?: Array<{
-    playerId: string;
-    nickname: string;
-    totalAssets: number;
-    cash: number;
-    stocksValue: number;
-    ownCompanyValue: number;
-  }>;
-  log: Array<{ round: number; text: string }>;
+  finalRankings?: RankingRow[];
+  log: GameLogEntry[];
 }
 
 // --- 클라 ↔ 서버 메시지 프로토콜 (M0 범위) ---
