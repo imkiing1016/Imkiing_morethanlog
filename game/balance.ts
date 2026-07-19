@@ -58,6 +58,7 @@ export const BALANCE = {
     VC: 0.08,      // 러브콜 → 섹터 재조명
     HEDGE: -0.12,  // 헤지펀드 → 섹터 도미노
     MYSTERY: 0.05,
+    BANK: -0.08,   // 은행 압류 → 섹터 신뢰 손상
   } as const,
   // 부활 IPO (엑시트 후 새 회사 창업)
   rebirthCost: 5_000_000,
@@ -71,6 +72,44 @@ export const BALANCE = {
   pivotCostRate: 0.3,
   exitMinPriceRate: (t: number) => 0.8 + 0.08 * t,
   meanReversionWeight: 0.5, // 과열 섹터 역풍 가중
+
+  // === 은행 시스템 ===
+  // 회사 소유자 대출 한도 · 이자율 (신뢰도 ★별 밴드).
+  // 신뢰도 배열 인덱스 = 신뢰도 값(0~5). 예: trust 5 → limit 3천만, 이자 5%
+  bankLoanLimitByTrust: [
+    10_000_000, // ★0
+    15_000_000, // ★1
+    20_000_000, // ★2
+    30_000_000, // ★3
+    30_000_000, // ★4
+    30_000_000, // ★5
+  ] as const,
+  bankInterestByTrust: [
+    0.22, // ★0
+    0.17, // ★1
+    0.13, // ★2
+    0.10, // ★3
+    0.07, // ★4
+    0.05, // ★5
+  ] as const,
+  // 미납 카운트 3회 도달 시 압류. 이자 정상 상환하면 카운트 리셋(0).
+  bankMissForForeclosure: 3,
+  // 이자 미납 시 회사 주가 하락 폭 (미납 카운트별 랜덤 범위).
+  bankMissPenaltyRange: [
+    [0.03, 0.07] as const, // 1회 미납: −3~7%
+    [0.05, 0.10] as const, // 2회 미납: −5~10%
+    [0.08, 0.15] as const, // 3회 미납(압류 직전): −8~15% (형식상, 실제로는 압류로 대체)
+  ] as const,
+  // 압류 시장 파장 (동섹터 다른 회사 주가에 이 비율 적용).
+  bankForeclosureRipple: -0.08,
+
+  // === 투자자 특권/제약 ===
+  // 매 회차 주식 매수 총액 상한 (POSITION + TRADE 합산). 매도는 무제한.
+  investorBuyQuotaPerRound: 5_000_000,
+  // 매매 이익세: SETTLE에서 roundTradesCashFlow > 0 이면 세율 적용.
+  investorTaxRate: 0.20,
+  // 세금 뉴스 노출 임계값 (이 값 이상 과세 시 뉴스 팝업).
+  investorTaxNewsThreshold: 2_000_000,
 };
 
 // 게임 규칙 상수 (SPEC 1장).

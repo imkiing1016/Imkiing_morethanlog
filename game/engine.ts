@@ -54,6 +54,11 @@ const BUYER_QUOTES: Record<string, string[]> = {
     "누가 산 건지는 아무도 모른다.",
     "프리미엄에 접수. 질문은 사절.",
   ],
+  BANK: [
+    "채무불이행. 담보권을 집행합니다.",
+    "안타깝지만 자산은 은행 소유입니다.",
+    "약속을 지키지 못한 대가입니다.",
+  ],
 };
 
 function pickQuote(buyerKey: string): string {
@@ -65,7 +70,8 @@ function pickQuote(buyerKey: string): string {
 function buyerSpotlightTone(
   buyerKey: string
 ): "celebration" | "hostile" | "somber" | "rebirth" {
-  if (buyerKey === "HAWK" || buyerKey === "HEDGE") return "hostile";
+  if (buyerKey === "HAWK" || buyerKey === "HEDGE" || buyerKey === "BANK")
+    return "hostile";
   if (buyerKey === "NATION") return "somber";
   return "celebration";
 }
@@ -245,6 +251,12 @@ export class GameRoom {
       case "foundNewCompany":
         this.handleFoundNewCompany(id);
         break;
+      case "takeLoan":
+        this.handleTakeLoan(id, msg.amount);
+        break;
+      case "repayLoan":
+        this.handleRepayLoan(id, msg.amount);
+        break;
       case "rematch":
         this.handleRematch(id);
         break;
@@ -306,11 +318,13 @@ export class GameRoom {
 
     // 시뮬레이션: 자본/지분 제약 확인. 현재 가격 기준.
     let cash = player.cash;
+    let simBuyTotal = 0; // 투자자 매수 한도 검증용
     const simHoldings: Record<string, number> = { ...player.holdings };
     for (const o of cleaned) {
       const co = this.state.companies[o.companyOwnerId];
       const cost = o.shares * co.price; // +매수 +비용, -매도 -비용(=환매수익)
       cash -= cost;
+      if (o.shares > 0) simBuyTotal += cost;
       const after = (simHoldings[o.companyOwnerId] ?? 0) + o.shares;
       if (after < 0) return; // 보유보다 더 매도 불가
       if (
@@ -322,6 +336,14 @@ export class GameRoom {
       simHoldings[o.companyOwnerId] = after;
     }
     if (cash < 0) return; // 잔여 현금 음수 불가
+    // 투자자 매수 한도 초과 방어 (POSITION + 이미 소진분 합산).
+    if (
+      player.isInvestor &&
+      player.roundStockBuyAmount + simBuyTotal >
+        BALANCE.investorBuyQuotaPerRound
+    ) {
+      return;
+    }
 
     player.pendingPosition = cleaned;
     player.ready = true;
@@ -351,11 +373,18 @@ export class GameRoom {
     ) {
       return; // 자기 회사 60% 상한
     }
+    // 투자자 매수 한도 체크 (매수만 카운트, 매도는 무제한).
+    if (player.isInvestor && n > 0) {
+      if (player.roundStockBuyAmount + cost > BALANCE.investorBuyQuotaPerRound) {
+        return; // 이번 회차 매수 한도 초과
+      }
+    }
 
     player.cash = newCash;
     player.holdings[companyOwnerId] = after;
     // 이번 회차 매매 순현금 흐름 (매수 = 유출, 매도 = 유입). SETTLE 정산 보드에 공개.
     player.roundTradesCashFlow -= cost;
+    if (n > 0) player.roundStockBuyAmount += cost;
     // 주가 임팩트: +매수면 ↑, -매도면 ↓.
     setPriceAndRecord(co, applyImpact(co.price, n, co.sharesOutstanding));
     this.broadcastSnapshot();
@@ -523,6 +552,28 @@ export class GameRoom {
     seller.cash += salePrice;
     seller.isInvestor = true;
 
+    // 1.5) 자발 매각 시(BANK 이외) 남은 대출 자동 상환.
+    //      BANK 경로는 이미 processBankingSettle 에서 원금 회수 처리 완료.
+    if (buyerKey !== "BANK" && seller.loanBalance > 0) {
+      const takeFromSale = Math.min(seller.loanBalance, seller.cash);
+      seller.cash -= takeFromSale;
+      seller.loanBalance -= takeFromSale;
+      seller.loanMissCount = 0;
+      // 매각가 부족분은 은행이 흡수 (판매자 기존 현금 손대지 않음 = 파산 방지).
+      if (seller.loanBalance > 0) {
+        this.state.log.push({
+          round: this.state.round,
+          text: `🏦 ${seller.nickname} 매각 상환 · 대출 잔여 ${seller.loanBalance.toLocaleString()}원은 은행 손실 흡수(탕감)`,
+        });
+        seller.loanBalance = 0;
+      } else if (takeFromSale > 0) {
+        this.state.log.push({
+          round: this.state.round,
+          text: `🏦 ${seller.nickname} 매각가로 대출 완납 −${takeFromSale.toLocaleString()}원`,
+        });
+      }
+    }
+
     // 2) 다른 홀더에게 자동 청산 (매각가 × 지분비율)
     const pricePerShare = Math.floor(salePrice / co.sharesOutstanding);
     for (const holder of this.state.players) {
@@ -675,6 +726,64 @@ export class GameRoom {
     }
   }
 
+  // 신뢰도에 따른 대출 한도. 회사 없는 투자자는 대출 불가 (0 반환).
+  private loanLimitFor(player: PlayerState): number {
+    if (player.isInvestor || !this.state.companies[player.id]) return 0;
+    const co = this.state.companies[player.id];
+    const trust = Math.max(0, Math.min(5, co.trust));
+    return BALANCE.bankLoanLimitByTrust[trust];
+  }
+
+  // 신뢰도에 따른 이자율.
+  private loanRateFor(player: PlayerState): number {
+    if (player.isInvestor || !this.state.companies[player.id]) return 0;
+    const co = this.state.companies[player.id];
+    const trust = Math.max(0, Math.min(5, co.trust));
+    return BALANCE.bankInterestByTrust[trust];
+  }
+
+  // 관리 페이즈: 대출 실행.
+  private handleTakeLoan(id: string, amount: number) {
+    if (this.state.phase !== "MANAGE") return;
+    const player = this.state.players.find((p) => p.id === id);
+    if (!player) return;
+    const co = this.state.companies[id];
+    if (!co) return; // 회사 없는 투자자는 대출 불가
+    const req = Math.floor(Number(amount) || 0);
+    if (req <= 0) return;
+    const limit = this.loanLimitFor(player);
+    if (player.loanBalance + req > limit) return; // 한도 초과
+    player.cash += req;
+    player.loanBalance += req;
+    this.state.log.push({
+      round: this.state.round,
+      text: `🏦 ${co.name} 대출 실행 ${req.toLocaleString()}원 (잔액 ${player.loanBalance.toLocaleString()}원)`,
+    });
+    this.broadcastSnapshot();
+  }
+
+  // 관리 페이즈: 대출 상환.
+  private handleRepayLoan(id: string, amount: number) {
+    if (this.state.phase !== "MANAGE") return;
+    const player = this.state.players.find((p) => p.id === id);
+    if (!player) return;
+    if (player.loanBalance <= 0) return;
+    let req = Math.floor(Number(amount) || 0);
+    if (req <= 0) return;
+    req = Math.min(req, player.loanBalance, player.cash);
+    if (req <= 0) return;
+    player.cash -= req;
+    player.loanBalance -= req;
+    // 상환 완료 → 미납 카운트 리셋(약속 지킴 신호).
+    if (player.loanBalance === 0) player.loanMissCount = 0;
+    const co = this.state.companies[id];
+    this.state.log.push({
+      round: this.state.round,
+      text: `🏦 ${co ? co.name : player.nickname} 대출 상환 −${req.toLocaleString()}원 (잔액 ${player.loanBalance.toLocaleString()}원)`,
+    });
+    this.broadcastSnapshot();
+  }
+
   // 부활 IPO: 투자자가 새 회사를 창업. 랜덤 섹터, 시장평균의 70% 시총으로 시작.
   private handleFoundNewCompany(id: string) {
     if (this.state.phase !== "MANAGE") return;
@@ -794,6 +903,9 @@ export class GameRoom {
       purchasedInfos: [],
       isInvestor: false,
       roundTradesCashFlow: 0,
+      loanBalance: 0,
+      loanMissCount: 0,
+      roundStockBuyAmount: 0,
       connected: true,
     };
     this.state.players.push(player);
@@ -821,6 +933,9 @@ export class GameRoom {
       purchasedInfos: [],
       isInvestor: false,
       roundTradesCashFlow: 0,
+      loanBalance: 0,
+      loanMissCount: 0,
+      roundStockBuyAmount: 0,
       isBot: true,
       connected: true,
     });
@@ -1007,6 +1122,8 @@ export class GameRoom {
       p.investorInsiderInfo = undefined;
       // 이번 회차 매매 순손익 카운터 리셋 (SETTLE 보드에서 공개될 유일한 재무 지표).
       p.roundTradesCashFlow = 0;
+      // 투자자 매수 한도 카운터 리셋.
+      p.roundStockBuyAmount = 0;
 
       if (p.isInvestor || !this.state.companies[p.id]) {
         // 투자자: 자기 회사 없음 → privateInfo 없음.
@@ -1109,6 +1226,7 @@ export class GameRoom {
         }
         p.cash -= cost;
         p.roundTradesCashFlow -= cost;
+        if (o.shares > 0) p.roundStockBuyAmount += cost;
         p.holdings[o.companyOwnerId] = after;
         netByCo.set(
           o.companyOwnerId,
@@ -1267,8 +1385,122 @@ export class GameRoom {
     }
     this.state.lastHotSector = hot;
 
-    // 4) 글로벌 이벤트 소비
+    // 4) 은행 시스템 — 이자 부과, 미납 처리, 압류 판정.
+    //    투자자: 매매 이익세만 부과 (대출 없음).
+    //    회사 소유자: 이자 자동 차감 → 부족 시 미납 카운트 +1, 카운트 3 도달 시 압류.
+    this.processBankingSettle();
+
+    // 5) 글로벌 이벤트 소비
     this.state.pendingGlobalEvent = undefined;
+  }
+
+  // SETTLE 정산 4단계: 세금 → 이자 → 미납 처리 → 압류 실행.
+  private processBankingSettle() {
+    // 4-1) 투자자 매매 이익세 (roundTradesCashFlow > 0 이면 과세).
+    for (const p of this.state.players) {
+      if (!p.isInvestor) continue;
+      if (p.roundTradesCashFlow <= 0) continue;
+      const tax = Math.floor(p.roundTradesCashFlow * BALANCE.investorTaxRate);
+      if (tax <= 0) continue;
+      // 현금 부족 시: 가능한 만큼만 걷음(파산 방지).
+      const collected = Math.min(tax, p.cash);
+      p.cash -= collected;
+      this.state.log.push({
+        round: this.state.round,
+        text: `📮 ${p.nickname} 매매 이익세 −${collected.toLocaleString()}원 (수익 ${p.roundTradesCashFlow.toLocaleString()}원)`,
+      });
+      if (collected >= BALANCE.investorTaxNewsThreshold) {
+        this.pushNews(
+          "📮",
+          `${p.nickname} 매매 이익세 납부`,
+          `투자자 세금 ${collected.toLocaleString()}원 · 이번 회차 순매도 우세`,
+          "neutral"
+        );
+      }
+    }
+
+    // 4-2) 회사 소유자 이자 부과 (미납 판정 포함).
+    // 압류 대상은 여기서 표시만 하고, 실제 실행은 아래 4-3 에서 loop 끝난 뒤.
+    const foreclosureVictims: Array<{
+      player: PlayerState;
+      co: NonNullable<GameState["companies"][string]>;
+    }> = [];
+    for (const p of this.state.players) {
+      if (p.isInvestor) continue;
+      const co = this.state.companies[p.id];
+      if (!co) continue;
+      if (p.loanBalance <= 0) {
+        // 대출 없으면 미납 카운트도 0 유지.
+        p.loanMissCount = 0;
+        continue;
+      }
+      const rate = this.loanRateFor(p);
+      const interest = Math.floor(p.loanBalance * rate);
+      if (interest <= 0) continue;
+
+      if (p.cash >= interest) {
+        // 정상 상환 → 미납 카운트 리셋 + 이자만 차감(원금 상환은 관리 페이즈에서).
+        p.cash -= interest;
+        p.loanMissCount = 0;
+        this.state.log.push({
+          round: this.state.round,
+          text: `🏦 ${co.name} 이자 −${interest.toLocaleString()}원 (원금 ${p.loanBalance.toLocaleString()}원)`,
+        });
+      } else {
+        // 미납 처리.
+        p.loanMissCount += 1;
+        const missIdx = Math.min(p.loanMissCount - 1, BALANCE.bankMissPenaltyRange.length - 1);
+        const [lo, hi] = BALANCE.bankMissPenaltyRange[missIdx];
+        const drop = lo + Math.random() * (hi - lo);
+        const newPrice = Math.max(1, Math.round(co.price * (1 - drop)));
+        setPriceAndRecord(co, newPrice);
+        co.trust = Math.max(0, co.trust - 1);
+
+        this.state.log.push({
+          round: this.state.round,
+          text: `⚠️ ${co.name} 이자 미납 ${p.loanMissCount}회 — 주가 ${(drop * 100).toFixed(1)}% 하락, 신뢰 −1`,
+        });
+
+        if (p.loanMissCount >= BALANCE.bankMissForForeclosure) {
+          // 압류 예정 (실제 실행은 loop 끝난 뒤).
+          foreclosureVictims.push({ player: p, co });
+        } else {
+          const isMarginCall = p.loanMissCount >= 2;
+          this.pushNews(
+            isMarginCall ? "🚨" : "⚠️",
+            `${co.name} 이자 미납 ${p.loanMissCount}회`,
+            `주가 ${(drop * 100).toFixed(1)}% ↓ · 신뢰 −1${isMarginCall ? " · 마진콜 · 다음 미납이면 압류" : ""}`,
+            "bad"
+          );
+        }
+      }
+    }
+
+    // 4-3) 압류 실행 (executeCompanyExit 재활용, buyerKey = BANK).
+    for (const victim of foreclosureVictims) {
+      // 압류 시 은행이 대출 원금을 회수, 잔여 지분가치는 판매자에게 지급.
+      // 매각가 산정: 시장 시총 기준 (지분 청산 계산은 executeCompanyExit 이 처리).
+      const marketCap = victim.co.price * victim.co.sharesOutstanding;
+      // 은행이 시장가에서 원금 회수하고 나머지 홀더에게 자동 청산.
+      // 판매자에겐 원금 초과분만 지급.
+      const totalRecovery = marketCap;
+      const bankTake = Math.min(victim.player.loanBalance, totalRecovery);
+      const sellerPayout = Math.max(0, totalRecovery - bankTake);
+      victim.player.loanBalance = 0;
+      victim.player.loanMissCount = 0;
+      this.executeCompanyExit(
+        victim.player,
+        victim.co,
+        sellerPayout,
+        "BANK",
+        "🔴",
+        "은행 압류"
+      );
+      this.state.log.push({
+        round: this.state.round,
+        text: `🔴 ${victim.co.name} 은행 압류 — 대출 ${bankTake.toLocaleString()}원 회수, 판매자 잔여 ${sellerPayout.toLocaleString()}원`,
+      });
+    }
   }
 
   private onTradeTimeout() {
@@ -1339,6 +1571,9 @@ export class GameRoom {
       p.isInvestor = false;
       p.investorInsiderInfo = undefined;
       p.roundTradesCashFlow = 0;
+      p.loanBalance = 0;
+      p.loanMissCount = 0;
+      p.roundStockBuyAmount = 0;
     }
     this.state.companies = {};
     this.state.exitOffers = [];

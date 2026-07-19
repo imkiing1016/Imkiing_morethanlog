@@ -6,6 +6,7 @@ import Lobby from "./Lobby";
 import GameView from "./GameView";
 import DebugPanel from "./DebugPanel";
 import NewsFeed from "./NewsFeed";
+import NewsHistoryButton from "./NewsHistoryButton";
 import SpotlightModal from "./SpotlightModal";
 
 // 방 컨테이너: 소켓 연결을 한 곳에서 유지하고(페이즈가 바뀌어도 재연결 안 함),
@@ -32,6 +33,7 @@ export default function Room({
         <GameView send={send} />
       )}
       <NewsFeed />
+      <NewsHistoryButton />
       <SpotlightModal />
       <DebugPanel />
     </>

@@ -111,6 +111,14 @@ export interface PlayerState {
   // 양수 = 매도 우세 / 음수 = 매수 우세. 총자산 은닉을 위해 이것만 SETTLE에 공개.
   // POSITION 체결 · TRADE 실시간 매매 모두 반영. INFO 진입 시 0으로 리셋.
   roundTradesCashFlow: number;
+  // 은행 대출 잔액(원리금 통합, 매 SETTLE 이자 가산). 회사 소유자만 사용.
+  // 매각/압류 시 자동 상환.
+  loanBalance: number;
+  // 이자 미납 카운트 (연속). 정상 상환하면 0 리셋, bankMissForForeclosure 도달 시 압류.
+  loanMissCount: number;
+  // 이번 회차 주식 매수 총액 (투자자 500만원 한도 판정용). INFO 진입 시 0 리셋.
+  // 회사 소유자는 참고 지표만.
+  roundStockBuyAmount: number;
 }
 
 export interface GameState {
@@ -201,6 +209,10 @@ export type ClientMessage =
   | { type: "acceptExitOffer"; offerId: number }
   // 관리 페이즈: 투자자가 새 회사 창업 (부활 IPO)
   | { type: "foundNewCompany" }
+  // 관리 페이즈: 은행에서 대출 받기 (양수 원) — 회사 소유자만
+  | { type: "takeLoan"; amount: number }
+  // 관리 페이즈: 대출 상환 (양수 원, 원리금 통합 잔액에서 차감)
+  | { type: "repayLoan"; amount: number }
   // 게임 종료 후: 호스트가 리매치 (같은 인원으로 로비 복귀)
   | { type: "rematch" }
   | { type: "ready" }; // 현재 페이즈 입력 완료 신호 (TRADE 제외 조기 전환용)

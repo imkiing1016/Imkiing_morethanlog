@@ -46,7 +46,7 @@ export default function NewsFeed() {
 
   return (
     <div
-      className="fixed right-3 top-3 z-40 flex flex-col gap-2 pointer-events-none"
+      className="fixed right-3 top-16 z-40 flex flex-col gap-2 pointer-events-none"
       style={{ maxWidth: "min(92vw, 320px)" }}
       aria-live="polite"
     >
