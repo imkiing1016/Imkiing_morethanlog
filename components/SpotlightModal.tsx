@@ -125,10 +125,18 @@ export default function SpotlightModal() {
 
       {/* 본체 카드 */}
       <div
-        className={`relative w-full max-w-md rounded-card border-4 ${styles.border} ${styles.bg} p-6 shadow-2xl spotlight-pop pointer-events-auto`}
+        className={`relative w-full max-w-md rounded-card border-4 ${styles.border} ${styles.bg} p-6 shadow-2xl spotlight-pop pointer-events-auto overflow-hidden`}
         onClick={() => setNow(null)}
       >
-        <div className="flex flex-col items-center gap-3 text-center">
+        {/* 압류 딱지 (BANK 헤드라인 감지 시 회전 등장) */}
+        {now.headline.includes("압류") && (
+          <div className="foreclosure-stamp absolute top-1/2 left-1/2 pointer-events-none">
+            <div className="px-6 py-2 border-4 border-danger text-danger font-black text-3xl tracking-widest rotate-[-12deg] bg-paper/70 rounded shadow-lg">
+              압류
+            </div>
+          </div>
+        )}
+        <div className="flex flex-col items-center gap-3 text-center relative z-10">
           <span className="text-6xl leading-none spotlight-emoji">
             {now.emoji}
           </span>
@@ -206,6 +214,27 @@ export default function SpotlightModal() {
           100% {
             transform: translateY(110vh) rotate(720deg);
             opacity: 0;
+          }
+        }
+        .foreclosure-stamp {
+          animation: foreclosure-stamp-in 600ms cubic-bezier(0.2, 1.6, 0.4, 1) 300ms both;
+          transform-origin: center;
+        }
+        @keyframes foreclosure-stamp-in {
+          0% {
+            transform: translate(-50%, -50%) scale(3) rotate(-45deg);
+            opacity: 0;
+          }
+          60% {
+            transform: translate(-50%, -50%) scale(0.9) rotate(-8deg);
+            opacity: 1;
+          }
+          80% {
+            transform: translate(-50%, -50%) scale(1.05) rotate(-14deg);
+          }
+          100% {
+            transform: translate(-50%, -50%) scale(1) rotate(-12deg);
+            opacity: 1;
           }
         }
       `}</style>

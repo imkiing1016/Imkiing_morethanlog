@@ -29,6 +29,8 @@ const SUPPORTED_MESSAGES = [
   "sellToNation",
   "acceptExitOffer",
   "foundNewCompany",
+  "takeLoan",
+  "repayLoan",
   "rematch",
   "ready",
 ];

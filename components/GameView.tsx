@@ -178,11 +178,29 @@ export default function GameView({
             ) : (
               <span className="text-xs text-neutral">회사 없음 (관전 모드)</span>
             )}
-            <div className="text-right ml-2">
-              <p className="text-xs text-neutral">현금</p>
-              <p className="text-sm font-medium tabular-nums">
-                {fmt(self.cash)}
-              </p>
+            <div className="text-right ml-2 flex flex-col items-end gap-0.5">
+              <div>
+                <p className="text-xs text-neutral">현금</p>
+                <p className="text-sm font-medium tabular-nums">
+                  {fmt(self.cash)}
+                </p>
+              </div>
+              {(self.loanBalance ?? 0) > 0 && (
+                <p className="text-[10px] text-danger tabular-nums">
+                  💸 대출 −{fmt(self.loanBalance)}
+                  {(self.loanMissCount ?? 0) > 0 && (
+                    <span className="ml-1 text-warning">
+                      · 미납 {self.loanMissCount}/{BALANCE.bankMissForForeclosure}
+                    </span>
+                  )}
+                </p>
+              )}
+              {self.isInvestor && (
+                <p className="text-[10px] text-neutral tabular-nums">
+                  💵 이번 회차 매수 {fmt(self.roundStockBuyAmount ?? 0)} /{" "}
+                  {fmt(BALANCE.investorBuyQuotaPerRound)}
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -419,6 +437,46 @@ export default function GameView({
             30초 안에 회사를 관리할 수 있어요. 연구, 기술 업그레이드, 사업 전환, 회사 매각.
           </p>
 
+          {/* 🚨 마진콜 배너: 미납 카운트 ≥2 이면 상단에 붉게 표시 */}
+          {myCompany && (self?.loanMissCount ?? 0) >= 2 && (() => {
+            const missLeft =
+              BALANCE.bankMissForForeclosure - (self?.loanMissCount ?? 0);
+            const trustIdx = Math.max(0, Math.min(5, myCompany.trust));
+            const rate = BALANCE.bankInterestByTrust[trustIdx];
+            const owed = Math.floor((self?.loanBalance ?? 0) * rate);
+            const canPay = (self?.cash ?? 0) >= owed;
+            return (
+              <div className="rounded-card border-2 border-danger bg-danger/15 p-3 flex flex-col gap-2 animate-pulse">
+                <p className="font-medium text-danger">
+                  🚨 마진콜 · 미납 {self?.loanMissCount}회 (다음 이자 못 갚으면 압류)
+                </p>
+                <p className="text-xs">
+                  다음 이자: <span className="tabular-nums font-medium">{fmt(owed)}</span>
+                  {" · "}
+                  현금: <span className="tabular-nums">{fmt(self?.cash ?? 0)}</span>
+                  {" · "}
+                  압류까지: {missLeft}회
+                </p>
+                {canPay ? (
+                  <p className="text-xs text-neutral">
+                    ✅ 이번 회차 이자는 갚을 수 있어요. 상환 유지 시 카운트 리셋.
+                  </p>
+                ) : (
+                  <button
+                    onClick={() => {
+                      const need = (self?.loanBalance ?? 0);
+                      const amt = Math.min(need, self?.cash ?? 0);
+                      if (amt > 0) send({ type: "repayLoan", amount: amt });
+                    }}
+                    className="rounded-element bg-danger text-paper px-3 py-2 text-sm font-medium"
+                  >
+                    🏦 가능한 금액 즉시 원금 상환 ({fmt(Math.min(self?.loanBalance ?? 0, self?.cash ?? 0))})
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+
           {myCompany && (
             <div className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-3">
               <div className="flex items-center gap-3">
@@ -432,6 +490,102 @@ export default function GameView({
                 </div>
                 <span className="tabular-nums text-sm">{fmt(myCompany.price)}</span>
               </div>
+
+              {/* 🏦 은행 — 대출/상환/이자 정보. 접힘 카드로 인지 부담 최소화 */}
+              {(() => {
+                const trustIdx = Math.max(0, Math.min(5, myCompany.trust));
+                const rate = BALANCE.bankInterestByTrust[trustIdx];
+                const limit = BALANCE.bankLoanLimitByTrust[trustIdx];
+                const balance = self?.loanBalance ?? 0;
+                const missCount = self?.loanMissCount ?? 0;
+                const nextInterest = Math.floor(balance * rate);
+                const roomLeft = Math.max(0, limit - balance);
+                const cash = self?.cash ?? 0;
+                const borrowPresets = [
+                  Math.min(5_000_000, roomLeft),
+                  Math.min(10_000_000, roomLeft),
+                  roomLeft,
+                ].filter((v, i, arr) => v > 0 && arr.indexOf(v) === i);
+                const repayPresets = [
+                  Math.min(5_000_000, balance, cash),
+                  Math.min(10_000_000, balance, cash),
+                  Math.min(balance, cash),
+                ].filter((v, i, arr) => v > 0 && arr.indexOf(v) === i);
+                return (
+                  <details className="rounded-element border-2 border-cardEdge bg-paper px-3 py-2" open={balance > 0}>
+                    <summary className="cursor-pointer flex justify-between items-center">
+                      <span className="flex items-center gap-2">
+                        <span className="text-xl">🏦</span>
+                        <span>
+                          <span className="font-medium">은행</span>
+                          <span className="block text-xs text-neutral">
+                            이자 {(rate * 100).toFixed(0)}%/턴 · 한도 {fmt(limit)}
+                          </span>
+                        </span>
+                      </span>
+                      <span className="text-sm tabular-nums">
+                        {balance > 0 ? (
+                          <span className="text-danger">−{fmt(balance)}</span>
+                        ) : (
+                          <span className="text-neutral">대출 없음</span>
+                        )}
+                      </span>
+                    </summary>
+                    <div className="mt-3 flex flex-col gap-3">
+                      {balance > 0 && (
+                        <div className="rounded-element border border-cardEdge bg-card px-2 py-2 text-xs flex flex-wrap gap-x-3 gap-y-1">
+                          <span>원금 <span className="tabular-nums font-medium">{fmt(balance)}</span></span>
+                          <span>다음 이자 <span className="tabular-nums text-danger">−{fmt(nextInterest)}</span></span>
+                          <span>
+                            미납 <span className={missCount === 0 ? "text-success" : missCount >= 2 ? "text-danger font-medium" : "text-warning"}>{missCount}/{BALANCE.bankMissForForeclosure}</span>
+                          </span>
+                        </div>
+                      )}
+
+                      {roomLeft > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs text-neutral">💰 대출 받기 (남은 한도 {fmt(roomLeft)})</p>
+                          <div className="flex gap-1 flex-wrap">
+                            {borrowPresets.map((amt) => (
+                              <button
+                                key={`b-${amt}`}
+                                onClick={() => send({ type: "takeLoan", amount: amt })}
+                                className="rounded-element border-2 border-cardEdge bg-card px-2 py-1 text-xs"
+                              >
+                                +{fmt(amt)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {balance > 0 && repayPresets.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs text-neutral">🏦 상환 (현금 {fmt(cash)})</p>
+                          <div className="flex gap-1 flex-wrap">
+                            {repayPresets.map((amt) => (
+                              <button
+                                key={`r-${amt}`}
+                                onClick={() => send({ type: "repayLoan", amount: amt })}
+                                className="rounded-element border-2 border-cardEdge bg-card px-2 py-1 text-xs"
+                              >
+                                −{fmt(amt)}
+                              </button>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-neutral">
+                            잔액 0 이 되면 미납 카운트가 리셋됩니다.
+                          </p>
+                        </div>
+                      )}
+
+                      {balance === 0 && roomLeft === 0 && (
+                        <p className="text-xs text-neutral">신뢰도가 낮아 한도가 없어요.</p>
+                      )}
+                    </div>
+                  </details>
+                );
+              })()}
 
               {/* 연구 (SPEC 3.6.5): 3단계 tier — 대성공 / 성공 / 실패 */}
               {(() => {
