@@ -578,17 +578,35 @@ export default function GameView({
                         send({ type: "sellToNation" });
                       }
                     }}
-                    className="rounded-element border-2 border-cardEdge bg-card px-3 py-2 text-left flex justify-between items-center"
+                    className="nation-btn relative rounded-element border-2 border-cardEdge bg-card px-3 py-2 text-left flex justify-between items-center overflow-hidden"
                   >
-                    <span>
-                      🏛️ 국가 매각
-                      <span className="block text-xs text-neutral">
-                        시장가 {(BALANCE.nationBuyoutRate * 100).toFixed(0)}% · 즉시 확정 · 투자자 전환
+                    <span className="flex items-center gap-2">
+                      <span className="text-2xl">🏛️</span>
+                      <span>
+                        <span className="font-medium">국가 매각</span>
+                        <span className="block text-xs text-neutral">
+                          시장가 {(BALANCE.nationBuyoutRate * 100).toFixed(0)}% · 즉시 확정 · 투자자 전환
+                        </span>
                       </span>
                     </span>
                     <span className="text-sm text-success tabular-nums">
                       +{fmt(payout)}
                     </span>
+                    <style jsx>{`
+                      .nation-btn::after {
+                        content: "OFFICIAL";
+                        position: absolute;
+                        top: 2px;
+                        right: 6px;
+                        font-size: 8px;
+                        letter-spacing: 1px;
+                        color: rgba(0, 0, 0, 0.3);
+                        border: 1px solid rgba(0, 0, 0, 0.3);
+                        padding: 0 3px;
+                        border-radius: 2px;
+                        transform: rotate(4deg);
+                      }
+                    `}</style>
                   </button>
                 );
               })()}
@@ -605,37 +623,125 @@ export default function GameView({
                     </div>
                   );
                 }
+                // 인수자 key 로 카드 톤 결정.
+                const buyerTone = (
+                  k: string
+                ): { border: string; accent: string; ribbon: string } => {
+                  switch (k) {
+                    case "HAWK":
+                      return {
+                        border: "border-danger",
+                        accent: "text-danger",
+                        ribbon: "🐺 매파",
+                      };
+                    case "HEDGE":
+                      return {
+                        border: "border-danger",
+                        accent: "text-danger",
+                        ribbon: "🩸 적대",
+                      };
+                    case "CHAEBOL":
+                      return {
+                        border: "border-warning",
+                        accent: "text-warning",
+                        ribbon: "🏢 재벌",
+                      };
+                    case "VC":
+                      return {
+                        border: "border-success",
+                        accent: "text-success",
+                        ribbon: "🌟 러브콜",
+                      };
+                    case "MYSTERY":
+                      return {
+                        border: "border-warning",
+                        accent: "text-warning",
+                        ribbon: "🕵️ 비밀",
+                      };
+                    default:
+                      return {
+                        border: "border-cardEdge",
+                        accent: "text-neutral",
+                        ribbon: "제안",
+                      };
+                  }
+                };
                 return (
                   <div className="flex flex-col gap-2">
-                    <p className="text-sm font-medium">💌 인수 제안</p>
-                    {myOffers.map((o) => (
-                      <button
-                        key={o.id}
-                        onClick={() => {
-                          if (
-                            confirm(
-                              `${o.buyerLabel} 의 제안 (${fmt(o.price)}, 시장가 ${(o.priceRate * 100).toFixed(0)}%) 을 수락하시겠어요? 회사가 상장폐지됩니다.`
-                            )
-                          ) {
-                            send({ type: "acceptExitOffer", offerId: o.id });
-                          }
-                        }}
-                        className="rounded-element border-2 border-cardEdge bg-card px-3 py-2 text-left flex justify-between items-center"
-                      >
-                        <span className="flex items-center gap-2">
-                          <span className="text-2xl">{o.buyerIcon}</span>
-                          <span>
-                            {o.buyerLabel}
-                            <span className="block text-xs text-neutral">
-                              시장가 {(o.priceRate * 100).toFixed(0)}% 제시
+                    <p className="text-sm font-medium">
+                      💌 인수 제안 · {myOffers.length}건 도착
+                    </p>
+                    {myOffers.map((o, i) => {
+                      const t = buyerTone(o.buyerKey);
+                      return (
+                        <button
+                          key={o.id}
+                          onClick={() => {
+                            if (
+                              confirm(
+                                `${o.buyerLabel} 의 제안 (${fmt(o.price)}, 시장가 ${(o.priceRate * 100).toFixed(0)}%) 을 수락하시겠어요? 회사가 상장폐지됩니다.`
+                              )
+                            ) {
+                              send({ type: "acceptExitOffer", offerId: o.id });
+                            }
+                          }}
+                          style={{ animationDelay: `${i * 90}ms` }}
+                          className={`offer-card relative rounded-element border-2 ${t.border} bg-card px-3 py-2 text-left flex justify-between items-center overflow-hidden`}
+                        >
+                          <span
+                            className={`absolute top-0 right-0 text-[10px] px-1.5 py-0.5 rounded-bl-md bg-paper border-l border-b ${t.border} ${t.accent}`}
+                          >
+                            {t.ribbon}
+                          </span>
+                          <span className="flex items-center gap-2">
+                            <span className="text-2xl offer-icon">
+                              {o.buyerIcon}
+                            </span>
+                            <span>
+                              <span className={`font-medium ${t.accent}`}>
+                                {o.buyerLabel}
+                              </span>
+                              <span className="block text-xs text-neutral">
+                                시장가 {(o.priceRate * 100).toFixed(0)}% 제시
+                              </span>
                             </span>
                           </span>
-                        </span>
-                        <span className="text-sm text-success tabular-nums">
-                          +{fmt(o.price)}
-                        </span>
-                      </button>
-                    ))}
+                          <span className="text-sm text-success tabular-nums pr-8">
+                            +{fmt(o.price)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    <style jsx>{`
+                      .offer-card {
+                        animation: offer-slide-in 420ms cubic-bezier(0.2, 1.2, 0.4, 1) both;
+                      }
+                      .offer-card:hover .offer-icon {
+                        animation: offer-icon-wiggle 500ms ease-in-out;
+                      }
+                      @keyframes offer-slide-in {
+                        from {
+                          transform: translateX(24px) scale(0.96);
+                          opacity: 0;
+                        }
+                        to {
+                          transform: translateX(0) scale(1);
+                          opacity: 1;
+                        }
+                      }
+                      @keyframes offer-icon-wiggle {
+                        0%,
+                        100% {
+                          transform: rotate(0);
+                        }
+                        25% {
+                          transform: rotate(-12deg);
+                        }
+                        75% {
+                          transform: rotate(12deg);
+                        }
+                      }
+                    `}</style>
                   </div>
                 );
               })()}
@@ -668,15 +774,47 @@ export default function GameView({
                 <button
                   disabled={!canRebirth}
                   onClick={() => send({ type: "foundNewCompany" })}
-                  className="rounded-element border-2 border-cardEdge bg-paper px-3 py-2 text-left flex justify-between items-center disabled:opacity-40"
+                  className={`rebirth-btn rounded-element border-2 border-warning bg-paper px-3 py-2 text-left flex justify-between items-center disabled:opacity-40 disabled:border-cardEdge ${
+                    canRebirth ? "rebirth-glow" : ""
+                  }`}
                 >
-                  <span>
-                    🚀 부활 IPO (새 회사 창업)
-                    <span className="block text-xs text-neutral">{reason}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-2xl rebirth-rocket">🚀</span>
+                    <span>
+                      <span className="font-medium">부활 IPO (새 회사 창업)</span>
+                      <span className="block text-xs text-neutral">{reason}</span>
+                    </span>
                   </span>
                   <span className="text-sm text-danger tabular-nums">
                     −{fmt(BALANCE.rebirthCost)}
                   </span>
+                  <style jsx>{`
+                    .rebirth-glow {
+                      animation: rebirth-glow 2s ease-in-out infinite;
+                    }
+                    .rebirth-glow .rebirth-rocket {
+                      display: inline-block;
+                      animation: rebirth-hover 2s ease-in-out infinite;
+                    }
+                    @keyframes rebirth-glow {
+                      0%,
+                      100% {
+                        box-shadow: 0 0 0 0 rgba(240, 180, 40, 0);
+                      }
+                      50% {
+                        box-shadow: 0 0 12px 2px rgba(240, 180, 40, 0.4);
+                      }
+                    }
+                    @keyframes rebirth-hover {
+                      0%,
+                      100% {
+                        transform: translateY(0);
+                      }
+                      50% {
+                        transform: translateY(-3px);
+                      }
+                    }
+                  `}</style>
                 </button>
               </div>
             );
@@ -1375,7 +1513,7 @@ export default function GameView({
             <div className="flex flex-col gap-3">
               <div className="rounded-card border-2 border-info bg-info/10 p-3">
                 <p className="text-xs text-neutral">🔔 회차 {state.round} 장 마감</p>
-                <p className="text-lg font-medium">최종 종가</p>
+                <p className="text-lg font-medium">🌡️ 최종 종가 · 회사 분위기</p>
                 <ul className="mt-2 flex flex-col gap-1">
                   {state.players
                     .filter((p) => state.companies[p.id])
@@ -1383,18 +1521,42 @@ export default function GameView({
                       const co = state.companies[p.id];
                       const prev = co.prevSettlePrice ?? co.price;
                       const pct = prev > 0 ? ((co.price - prev) / prev) * 100 : 0;
+                      const mood =
+                        pct > 15
+                          ? "🔥"
+                          : pct > 5
+                            ? "📈"
+                            : pct >= -5
+                              ? "➡️"
+                              : pct >= -15
+                                ? "📉"
+                                : "💀";
+                      const moodLabel =
+                        pct > 15
+                          ? "폭등"
+                          : pct > 5
+                            ? "상승"
+                            : pct >= -5
+                              ? "보합"
+                              : pct >= -15
+                                ? "하락"
+                                : "폭락";
                       return (
                         <li
                           key={p.id}
-                          className="flex justify-between text-sm"
+                          className="flex justify-between text-sm items-center"
                         >
-                          <span>
-                            <span className="mascot mr-1">
-                              {<SectorIcon sector={co.sector} size={24} />}
+                          <span className="flex items-center gap-1">
+                            <span className="text-base">{mood}</span>
+                            <span className="mascot">
+                              {<SectorIcon sector={co.sector} size={20} />}
                             </span>
-                            {co.name}
+                            <span className="truncate">{co.name}</span>
+                            <span className="text-[10px] text-neutral">
+                              {moodLabel}
+                            </span>
                           </span>
-                          <span className="tabular-nums">
+                          <span className="tabular-nums whitespace-nowrap">
                             {fmt(co.price)}{" "}
                             <span
                               className={
@@ -1414,7 +1576,173 @@ export default function GameView({
                     })}
                 </ul>
               </div>
-              <p className="text-sm text-neutral">📊 회차 {state.round} 결과</p>
+
+              {/* 📰 이번 회차 뉴스 요약 — round 태그된 이벤트만 필터 */}
+              {(() => {
+                const roundNews = state.newsEvents.filter(
+                  (n) => n.round === state.round
+                );
+                if (roundNews.length === 0) return null;
+                return (
+                  <div className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2">
+                    <p className="text-sm font-medium">
+                      📰 이번 회차 뉴스 · {roundNews.length}건
+                    </p>
+                    <ul className="flex flex-col gap-1.5">
+                      {roundNews.map((n) => (
+                        <li
+                          key={n.id}
+                          className={`text-xs rounded-element px-2 py-1.5 border ${
+                            n.tone === "good"
+                              ? "border-success/40 bg-success/10"
+                              : n.tone === "bad"
+                                ? "border-danger/40 bg-danger/10"
+                                : "border-cardEdge bg-paper"
+                          }`}
+                        >
+                          <span className="text-sm mr-1">{n.emoji}</span>
+                          <span className="font-medium">{n.headline}</span>
+                          {n.detail && (
+                            <span className="block text-neutral mt-0.5">
+                              {n.detail}
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })()}
+
+              {/* 🔬 연구/기술 성과 — lastResearchOutcome 있는 회사만 */}
+              {(() => {
+                const researched = state.players
+                  .map((p) => {
+                    const co = state.companies[p.id];
+                    if (!co || !co.lastResearchOutcome) return null;
+                    return { player: p, co };
+                  })
+                  .filter(
+                    (x): x is { player: NonNullable<typeof x>["player"]; co: NonNullable<typeof x>["co"] } =>
+                      !!x
+                  );
+                if (researched.length === 0) return null;
+                return (
+                  <div className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2">
+                    <p className="text-sm font-medium">🔬 연구 · 기술 성과</p>
+                    <ul className="flex flex-col gap-1">
+                      {researched.map(({ player, co }) => {
+                        const outcome = co.lastResearchOutcome!;
+                        const label =
+                          outcome === "jackpot"
+                            ? { emoji: "🎉", txt: "대성공", cls: "text-success" }
+                            : outcome === "success"
+                              ? { emoji: "🔬", txt: "성공", cls: "text-success" }
+                              : { emoji: "💧", txt: "실패", cls: "text-neutral" };
+                        return (
+                          <li
+                            key={player.id}
+                            className="flex items-center justify-between text-sm"
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <span className="mascot">
+                                {<SectorIcon sector={co.sector} size={20} />}
+                              </span>
+                              <span className="truncate">
+                                {co.name}
+                                <span className="ml-1 text-[10px] text-neutral">
+                                  Lv.{co.techLevel}
+                                </span>
+                              </span>
+                            </span>
+                            <span className={`text-sm font-medium ${label.cls}`}>
+                              {label.emoji} {label.txt}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                );
+              })()}
+
+              {/* 💰 이번 회차 매매 순손익 랭킹 — 총자산은 은닉, 이 값만 공개 */}
+              <div className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2">
+                <p className="text-sm font-medium">💰 이번 회차 매매 순손익</p>
+                <p className="text-[10px] text-neutral">
+                  매도 대금 − 매수 대금. 양수 = 순매도, 음수 = 순매수.
+                  총자산은 비공개.
+                </p>
+                <ul className="flex flex-col gap-1">
+                  {[...state.players]
+                    .sort(
+                      (a, b) =>
+                        (b.roundTradesCashFlow ?? 0) - (a.roundTradesCashFlow ?? 0)
+                    )
+                    .map((p, idx) => {
+                      const flow = p.roundTradesCashFlow ?? 0;
+                      const isMe = p.id === selfId;
+                      const co = state.companies[p.id];
+                      const rankBadge =
+                        idx === 0 && flow > 0
+                          ? "🥇"
+                          : idx === 1 && flow > 0
+                            ? "🥈"
+                            : idx === 2 && flow > 0
+                              ? "🥉"
+                              : "";
+                      return (
+                        <li
+                          key={p.id}
+                          className={`flex items-center justify-between text-sm rounded-element px-2 py-1.5 ${
+                            isMe ? "bg-accentSoft border border-warning" : ""
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            {rankBadge && (
+                              <span className="text-base">{rankBadge}</span>
+                            )}
+                            {co && (
+                              <span className="mascot">
+                                {<SectorIcon sector={co.sector} size={20} />}
+                              </span>
+                            )}
+                            {p.isBot && (
+                              <span className="text-xs">🤖</span>
+                            )}
+                            <span className="truncate">
+                              {p.nickname}
+                              {isMe && (
+                                <span className="ml-1 text-xs text-warning">
+                                  (나)
+                                </span>
+                              )}
+                              {p.isInvestor && (
+                                <span className="ml-1 text-[10px] text-neutral">
+                                  💼
+                                </span>
+                              )}
+                            </span>
+                          </span>
+                          <span
+                            className={`tabular-nums font-medium ${
+                              flow > 0
+                                ? "text-success"
+                                : flow < 0
+                                  ? "text-danger"
+                                  : "text-neutral"
+                            }`}
+                          >
+                            {flow > 0 ? "+" : flow < 0 ? "" : "±"}
+                            {fmt(flow)}
+                          </span>
+                        </li>
+                      );
+                    })}
+                </ul>
+              </div>
+
+              <p className="text-sm text-neutral">📊 회차 {state.round} 상세</p>
               {state.players
                 .filter((other) => state.companies[other.id])
                 .map((other) => {
@@ -1505,7 +1833,7 @@ export default function GameView({
                 })}
               {self && (
                 <div className="rounded-card border-2 border-info bg-info/5 p-3">
-                  <p className="text-xs text-neutral">내 자산 (총)</p>
+                  <p className="text-xs text-neutral">🔒 내 자산 (본인만 표시)</p>
                   <p className="text-2xl font-medium tabular-nums">
                     {fmt(
                       self.cash +
