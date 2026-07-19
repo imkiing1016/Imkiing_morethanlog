@@ -1,14 +1,45 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useDebugLog } from "@/lib/debugLog";
 
 // 디버그 패널: 우측 하단 플로팅 버튼으로 토글.
 // 모든 send()/snapshot/status 이벤트를 시간순으로 표시한다.
+// URL 파라미터 ?debug=1 로 진입한 사용자에게만 노출 (일반 유저는 아이콘조차 안 보임).
+// 세션 스토리지에 저장해 방 페이지로 이동해도 유지. 백업 토글: Ctrl+Shift+D.
 export default function DebugPanel() {
+  const [enabled, setEnabled] = useState(false);
   const entries = useDebugLog((s) => s.entries);
   const open = useDebugLog((s) => s.open);
   const setOpen = useDebugLog((s) => s.setOpen);
   const clear = useDebugLog((s) => s.clear);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("debug") === "1") {
+      sessionStorage.setItem("_debugEnabled", "1");
+      setEnabled(true);
+    } else if (sessionStorage.getItem("_debugEnabled") === "1") {
+      setEnabled(true);
+    }
+    // 백업 토글: Ctrl+Shift+D (URL 붙이기 잊었을 때).
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && (e.key === "D" || e.key === "d")) {
+        e.preventDefault();
+        setEnabled((prev) => {
+          const next = !prev;
+          if (next) sessionStorage.setItem("_debugEnabled", "1");
+          else sessionStorage.removeItem("_debugEnabled");
+          return next;
+        });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  if (!enabled) return null;
 
   return (
     <div
