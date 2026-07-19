@@ -10,9 +10,9 @@ export const BALANCE = {
   // 새 연구 시스템 (SPEC 3.6.5): 관리 페이즈에서 3단계 투자로 대성공/성공/실패.
   // 1회차 이후 MANAGE 부터 사용. 창업 출자의 자동 잭팟 확률은 이걸로 대체됨.
   researchTiers: [
-    { cost: 1_000_000, jackpot: 0.05, success: 0.25 }, // 실패 70%
-    { cost: 3_000_000, jackpot: 0.15, success: 0.45 }, // 실패 40%
-    { cost: 5_000_000, jackpot: 0.3, success: 0.55 }, // 실패 15%
+    { cost: 500_000, jackpot: 0.05, success: 0.25 }, // 실패 70%
+    { cost: 1_500_000, jackpot: 0.15, success: 0.45 }, // 실패 40%
+    { cost: 2_500_000, jackpot: 0.3, success: 0.55 }, // 실패 15%
   ] as const,
   researchJackpotRange: [0.4, 0.6] as const, // 대성공 시 +40~60%
   researchSuccessRange: [0.1, 0.2] as const, // 성공 시 +10~20%
@@ -35,7 +35,7 @@ export const BALANCE = {
   nationBuyoutRate: 0.5,
   // NPC 인수 제안 확률/가격 (매 MANAGE 진입 시 회사별로 계산)
   //   기본 확률 30% + 신뢰도×5% + 기술레벨×3% + 종반보너스(회차 ≤3 남으면 +20%)
-  offerBaseChance: 0.3,
+  offerBaseChance: 0.15,
   offerTrustBonus: 0.05,
   offerTechBonus: 0.03,
   offerEndgameBonus: 0.2,
@@ -85,12 +85,12 @@ export const BALANCE = {
     30_000_000, // ★5
   ] as const,
   bankInterestByTrust: [
-    0.22, // ★0
-    0.17, // ★1
-    0.13, // ★2
-    0.10, // ★3
-    0.07, // ★4
-    0.05, // ★5
+    0.17, // ★0
+    0.13, // ★1
+    0.10, // ★2
+    0.07, // ★3
+    0.05, // ★4
+    0.03, // ★5
   ] as const,
   // 미납 카운트 3회 도달 시 압류. 이자 정상 상환하면 카운트 리셋(0).
   bankMissForForeclosure: 3,
