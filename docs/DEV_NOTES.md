@@ -596,10 +596,389 @@ git push --force-with-lease    # 안전한 강제 푸시
 
 ---
 
-## 부록 · 배포 자원
+## 부록 A · 배포 자원
 
 - **웹 프로덕션**: https://imkiing-morethanlog.vercel.app
 - **WebSocket 서버**: `imkiing-morethanlog.onrender.com`
 - **레포**: https://github.com/imkiing1016/Imkiing_morethanlog
 - **디버그 모드 켜기**: URL 뒤에 `?debug=1` 또는 `Ctrl+Shift+D`
 - **Render 무료 티어**: 15분 유휴 시 sleep → 첫 접속 30~60초 콜드 스타트
+
+---
+
+## 부록 B · 비개발자를 위한 사전 지식
+
+이 이후 섹션은 프로그래밍 배경이 적은 사람을 위해 위 내용을 다시 풀어 쓴 부분이다.
+개발자라면 스킵해도 무방.
+
+### B.1 코드가 대체 뭐하는 건가
+
+프로그래밍은 결국 **컴퓨터에게 시킬 일을 순서대로 적은 종이**다. 이 프로젝트는:
+
+1. 사람이 브라우저에서 버튼을 누른다
+2. 그 정보가 **인터넷을 타고 서버로 전송**됨
+3. 서버가 "이 사람이 X주 사려 한다 → 잔액 확인 → 주가 계산 → 저장"
+4. 결과가 다시 **모든 참가자의 브라우저로 전송**되어 화면이 갱신됨
+
+이 왕복이 초 단위로 계속 일어난다.
+
+### B.2 각 도구가 뭘 하는지
+
+프로젝트에 등장하는 이름들:
+
+| 이름 | 한 줄 요약 | 비유 |
+|---|---|---|
+| **TypeScript** | 자바스크립트 + 타입 검사 (실수 방지) | 문법 검사기 |
+| **Next.js** | 웹사이트를 만드는 프레임워크 | 집 짓기 세트 |
+| **React** | 화면을 조각(컴포넌트)으로 나눠 그리는 도구 | 레고 블록 |
+| **Tailwind CSS** | 색·간격·크기를 클래스 이름으로 스타일링 | 스티커 라벨링 |
+| **Zustand** | 브라우저에서 상태(현재 화면 정보)를 관리 | 냉장고 메모지 |
+| **WebSocket** | 서버와 실시간 양방향 통신 | 통화 연결 |
+| **Node.js** | 서버에서 JavaScript 실행 환경 | 브라우저 없는 브라우저 |
+| **Vercel** | 웹사이트를 배포·호스팅 | 부동산 임대 |
+| **Render** | 서버 앱을 배포·호스팅 | 상업 임대 |
+| **Git / GitHub** | 코드 변경 이력 관리 + 원격 저장소 | 사진 앨범 + 클라우드 |
+| **npm** | 남이 만든 코드 패키지 다운로드 도구 | 앱스토어 |
+
+### B.3 파일 확장자별 역할
+
+이 레포에 있는 파일:
+
+| 확장자 | 내용 | 예시 파일 |
+|---|---|---|
+| `.ts` | 타입스크립트 코드 (서버 로직 등) | `game/engine.ts` |
+| `.tsx` | 타입스크립트 + JSX (화면 컴포넌트) | `components/GameView.tsx` |
+| `.md` | 문서 (Markdown) | 이 파일 |
+| `.json` | 설정/데이터 (JSON 형식) | `package.json` |
+| `.yaml` | 설정 (YAML 형식) | `render.yaml` |
+| `.png` | 이미지 | `public/sectors/it_game.png` |
+| `.mjs` | ES 모듈 JS (스크립트) | `scratchpad/sim.mjs` |
+
+### B.4 폴더 구조가 왜 이렇게 나뉘어 있나
+
+```
+components/    ← 브라우저에 그려질 화면 조각들 (React)
+  phases/         └ 페이즈별 UI (SETUP, INFO, TRADE 등)
+  GameView.tsx    └ 최상위 페이즈 라우터
+
+game/          ← 게임 규칙과 상태 (서버 + 클라 공용)
+  types.ts        └ 데이터 모양 정의 (GameState, Player 등)
+  balance.ts      └ 모든 수치 (이자율, 확률, 비용 등)
+  engine.ts       └ 서버 게임 진행 클래스
+  logic/          └ 도메인별 로직 (bank, exit, bigEvents 등)
+
+server/        ← WebSocket 서버 진입점
+  index.ts
+
+lib/           ← 클라 유틸 (스토어, 소켓 훅 등)
+
+app/           ← Next.js 페이지 라우팅
+  page.tsx        └ / (홈)
+  room/[code]/    └ /room/K7M2Q 같은 동적 경로
+
+public/        ← 정적 파일 (이미지 등)
+docs/          ← 문서
+scratchpad/    ← 실험용 스크립트 (git 무시됨)
+```
+
+**규칙**: 폴더 이름은 "여기 뭐가 들어있어야 하는지" 를 말해준다. `components/` 에는 UI만,
+`game/` 에는 게임 로직만. 섞이면 코드베이스가 지저분해짐.
+
+### B.5 자주 나오는 프로그래밍 용어 사전
+
+- **변수(variable)** — 값을 담아두는 상자. `const cash = 10000` = "cash 라는 상자에 10000 넣기"
+- **함수(function)** — 입력을 받아 결과를 내는 기계. `function add(a, b) { return a + b }`
+- **타입(type)** — 값의 종류. 숫자·문자열·불린(true/false)·객체·배열 등
+- **객체(object)** — 여러 이름-값 쌍 묶음. `{ name: "홍길동", cash: 10000 }`
+- **배열(array)** — 순서 있는 목록. `[1, 2, 3]` 또는 `["A", "B"]`
+- **인터페이스(interface)** — TypeScript에서 객체 모양의 청사진.
+  `interface Player { name: string; cash: number }`
+- **컴포넌트(component)** — React에서 화면 조각. 함수처럼 생겼지만 화면(JSX)을 반환
+- **훅(hook)** — React에서 상태·부수효과를 다루는 특별한 함수. `useState`, `useEffect` 등
+- **상태(state)** — 시간에 따라 변하는 정보. 예: 현재 페이즈, 내 현금
+- **props** — 컴포넌트에 전달되는 값. 함수 인자와 유사
+- **비동기(async)** — 결과가 즉시 오지 않는 작업. 서버 요청 등. `await` 로 기다림
+- **콜백(callback)** — 나중에 호출될 함수. "이 일 끝나면 이걸 실행해줘"
+- **모듈(module)** — 파일 하나 = 모듈 하나. `import`/`export` 로 서로 가져다 씀
+- **커밋(commit)** — Git에서 변경 사항 한 묶음을 저장하는 단위
+- **브랜치(branch)** — 커밋 흐름의 분기. 별도 실험선. `main`, `feature/game` 등
+
+---
+
+## 부록 C · 코드 조각 해부
+
+실제 이 프로젝트 코드에서 잘라낸 몇 조각을 한 줄씩 풀이한다.
+
+### C.1 함수 예제: 은행에서 대출 받기
+
+파일 `game/engine.ts`:
+
+```typescript
+private handleTakeLoan(id: string, amount: number) {  // ①
+  const ctx = getManageContext(this.state, id);       // ②
+  if (!ctx) return;                                   // ③
+  const { player, co } = ctx;                         // ④
+  const req = Math.floor(Number(amount) || 0);        // ⑤
+  if (req <= 0) return;                               // ⑥
+  const limit = this.loanLimitFor(player);            // ⑦
+  if (player.loanBalance + req > limit) return;       // ⑧
+  player.cash += req;                                 // ⑨
+  player.loanBalance += req;                          // ⑩
+  this.state.log.push({                               // ⑪
+    round: this.state.round,
+    text: `🏦 ${co.name} 대출 실행 ${req.toLocaleString()}원`,
+  });
+  this.broadcastSnapshot();                           // ⑫
+}
+```
+
+한 줄씩:
+
+| 번호 | 설명 |
+|---|---|
+| ① | 함수 정의. 클라가 `takeLoan` 메시지 보내면 서버가 이걸 실행. `id` = 누가, `amount` = 얼마 |
+| ② | "지금 관리 페이즈인가? 이 사람 있나? 회사 있나?" 를 한 번에 검증하는 헬퍼 호출 |
+| ③ | 검증 실패면 아무 것도 안 하고 조용히 종료 (요청 무시) |
+| ④ | 검증 통과했으니 player와 회사(co) 꺼내기. 구조 분해 문법 |
+| ⑤ | 요청 금액을 정수로 변환. `null` 이나 이상한 값 오면 0 처리 |
+| ⑥ | 0 이하면 무시 (음수 대출 방어) |
+| ⑦ | 이 사람의 대출 한도 계산 (신뢰도별로 다름) |
+| ⑧ | 기존 대출 + 이번 요청이 한도 초과면 거절 |
+| ⑨ | 요청 금액만큼 현금 증가 |
+| ⑩ | 대출 잔액도 같은 만큼 증가 |
+| ⑪ | 게임 로그에 한 줄 추가 (화면 하단 진행 로그에 표시됨) |
+| ⑫ | 모든 접속자에게 새 상태 전송 (그들 화면이 갱신됨) |
+
+**핵심 아이디어**: 서버 함수는 대개 이렇게 **검증 → 조건 확인 → 상태 변경 → 브로드캐스트**
+패턴을 반복한다.
+
+### C.2 컴포넌트 예제: 사업 설립 화면 헤더
+
+파일 `components/phases/SetupView.tsx` 앞부분:
+
+```tsx
+"use client";                                          // ①
+
+import { useEffect, useState } from "react";           // ②
+import { SECTORS, SECTOR_LABELS } from "@/game/types"; // ③
+import type { Sector } from "@/game/types";
+import SectorIcon from "../SectorIcon";
+import { fmt, type PhaseViewProps } from "./phaseCommon";
+
+export default function SetupView({                    // ④
+  self, send, myCompany, connected, readyCount, state
+}: PhaseViewProps) {
+  const [sector, setSector] = useState<Sector | null>(null);  // ⑤
+  const [bizName, setBizName] = useState("");
+  const [seedManwon, setSeedManwon] = useState(0);
+
+  useEffect(() => {                                    // ⑥
+    if (state.phase === "SETUP") {
+      setSector(null);
+      setBizName("");
+      setSeedManwon(0);
+    }
+  }, [state.phase]);
+
+  return (                                             // ⑦
+    <section className="flex flex-col gap-4">
+      <p className="font-medium">내 사업 만들기</p>
+      {/* … 이후 카테고리 버튼 그리드, 입력창, 확정 버튼 … */}
+    </section>
+  );
+}
+```
+
+| 번호 | 설명 |
+|---|---|
+| ① | 이 컴포넌트는 브라우저에서만 실행됨 (서버 렌더 아님) |
+| ② | React 기본 도구 두 개 가져오기 |
+| ③ | 우리 프로젝트의 타입/상수 가져오기 (`@/` 는 프로젝트 루트) |
+| ④ | 컴포넌트 정의. props(부모가 준 값)를 구조 분해로 꺼냄 |
+| ⑤ | 로컬 상태 3개. 사용자가 입력하면 setState 로 갱신 |
+| ⑥ | "SETUP 페이즈 진입할 때마다 폼 초기화" 부수 효과 |
+| ⑦ | 화면에 그릴 내용을 JSX 로 반환. HTML 처럼 생겼지만 사실 JS 함수 호출 |
+
+**핵심 아이디어**: React 컴포넌트 = **입력(props) + 상태(useState) → 화면(JSX)** 을 만드는 함수.
+
+### C.3 상태 저장소 예제
+
+파일 `lib/store.ts` (Zustand):
+
+```typescript
+import { create } from "zustand";
+import type { GameState } from "@/game/types";
+
+interface GameStore {
+  state: GameState | null;
+  selfId: string | null;
+  setSnapshot: (state: GameState, selfId: string) => void;
+  reset: () => void;
+}
+
+export const useGameStore = create<GameStore>((set) => ({
+  state: null,
+  selfId: null,
+  setSnapshot: (state, selfId) => set({ state, selfId }),
+  reset: () => set({ state: null, selfId: null }),
+}));
+```
+
+- 서버에서 스냅샷 도착 → `setSnapshot(state, selfId)` 호출 → 저장소 갱신
+- 어느 컴포넌트에서든 `useGameStore((s) => s.state)` 로 최신 상태 꺼내 쓰기
+- 상태 바뀌면 관련 컴포넌트가 자동으로 다시 그림 (React 리렌더링)
+
+**비유**: 냉장고 문에 붙은 큰 화이트보드. 누구나 볼 수 있고, 하나만 있어서 정보 일관됨.
+
+---
+
+## 부록 D · 직접 만져보고 싶다면
+
+배경 지식 없어도 안전하게 실험할 수 있는 순서.
+
+### D.1 준비물
+
+1. 컴퓨터에 **Node.js 18 이상** 설치 (nodejs.org)
+2. 터미널 (Windows: PowerShell / Mac: Terminal)
+3. 코드 편집기 — VS Code 추천 (무료)
+
+### D.2 코드 받아서 실행하기
+
+터미널에 순서대로:
+
+```bash
+git clone https://github.com/imkiing1016/Imkiing_morethanlog.git
+cd Imkiing_morethanlog
+npm install                # 필요한 도구들 다운로드 (5분 소요 첫 1회만)
+```
+
+두 터미널 창을 열어야 함:
+
+- 창 1: `npm run server` (실시간 서버, 127.0.0.1:1999)
+- 창 2: `npm run dev` (웹 서버, http://localhost:3000)
+
+브라우저에서 http://localhost:3000 열면 뜸.
+
+### D.3 첫 실험: 밸런스 수치 하나 바꾸기
+
+**목표**: 시작 자본을 1천만원에서 5천만원으로 늘려서 게임이 어떻게 달라지는지 보기.
+
+1. VS Code 로 `game/balance.ts` 파일 열기
+2. 이 줄 찾기:
+   ```typescript
+   startingCash: 10_000_000, // 시작 자본 1,000만원
+   ```
+3. 이렇게 바꾸기:
+   ```typescript
+   startingCash: 50_000_000, // 시작 자본 5,000만원
+   ```
+4. 저장 (Ctrl+S)
+5. 서버가 자동 재시작됨 (창 1 콘솔에서 "실행 중" 메시지 확인)
+6. 브라우저 새로고침 → 새 방 만들기 → 봇 추가 → 게임 시작
+7. 각자 시작 현금이 5천만원으로 바뀐 걸 확인!
+
+**되돌리려면**: 원래 값(10_000_000)으로 다시 바꾸고 저장. 끝.
+
+### D.4 둘째 실험: 새 flavor 대사 추가
+
+**목표**: 재벌 인수자에 새 대사 넣기.
+
+파일 `game/logic/exitBuyers.ts` 에서 CHAEBOL 배열 찾기:
+
+```typescript
+CHAEBOL: [
+  "아버지가 사드리라 하셨어.",
+  "그룹 포트폴리오에 얹지.",
+  "그래, 얼마면 되겠어?",
+],
+```
+
+원하는 대사 추가:
+
+```typescript
+CHAEBOL: [
+  "아버지가 사드리라 하셨어.",
+  "그룹 포트폴리오에 얹지.",
+  "그래, 얼마면 되겠어?",
+  "내 취미로 하나 인수해두지.",      // ← 새 대사
+  "이거 세금 절세용으로 딱이야.",     // ← 새 대사
+],
+```
+
+저장. 다음에 재벌이 매각 성사되면 이 대사가 랜덤으로 뽑힘.
+
+### D.5 셋째 실험: 블랙스완 이벤트 강도 조절
+
+**목표**: 좀비 바이러스가 더 무섭게 만들기.
+
+파일 `game/balance.ts` 에서:
+
+```typescript
+{
+  key: "ZOMBIE",
+  label: "좀비 바이러스 대유행",
+  emoji: "🧟",
+  kind: "global" as const,
+  magnitudeRange: [-0.5, -0.3] as const,   // ← 이 부분
+  …
+}
+```
+
+범위를 더 크게 (더 심한 폭락):
+
+```typescript
+magnitudeRange: [-0.7, -0.5] as const,   // -70~-50%
+```
+
+저장 → 7회차 좀비 나올 때 더 큰 폭락 발생.
+
+### D.6 안전한 실험 규칙
+
+1. **balance.ts 만 만지자** — 이 파일은 수치만 있어서 실수해도 문법 오류 잘 안 남
+2. **저장 전후 파일 백업** — 걱정되면 파일을 다른 이름으로 복사(예: `balance.backup.ts`)해뒀다가 원상복구
+3. **모르는 코드는 지우지 말자** — 뭔지 모르면 그냥 두기
+4. **git으로 되돌리기** — `git status` 로 바뀐 파일 확인, `git checkout <파일이름>` 으로 원복
+5. **문법 오류 나면 창 1이 빨간 글씨로 알려줌** — 에러 메시지 읽어보고, 방금 바꾼 곳으로 돌아가서 확인
+
+### D.7 코드 읽는 법 팁
+
+- **폰트를 크게** — 눈 피로 줄이기
+- **컬러 테마 어둡게** — 밝은 화면보다 눈 편함 (VS Code: Ctrl+K → Ctrl+T)
+- **주석부터 읽기** — `//` 로 시작하는 줄, `/** … */` 블록은 사람이 쓴 설명
+- **모르는 단어 = 인터넷 검색** — 부끄러워하지 말고 즉시 검색
+- **한 번에 전부 이해하려 하지 말기** — 큰 그림 파악 → 관심 부분만 깊이
+
+### D.8 다음 단계로 나아가고 싶다면
+
+1. **관심 있는 기능 하나 골라 코드 추적**
+   - 예: "은행 대출 버튼 누르면 어떻게 되나?"
+   - 시작: `components/phases/ManageView.tsx` 에서 "대출" 검색 → `send({ type: "takeLoan" })` 발견
+   - 다음: `game/engine.ts` 에서 `case "takeLoan"` 검색 → `handleTakeLoan` 호출
+   - 다음: `handleTakeLoan` 함수 정의 읽기
+   - 다음: 관련 헬퍼 (`loanLimitFor`, `getManageContext`) 따라가기
+
+2. **작은 기능 하나 추가해보기**
+   - 예: "관리 페이즈 카드에 회사 로고 크게 표시하기"
+   - `components/phases/ManageView.tsx` 열고 관련 코드 찾아 SectorIcon 크기 늘리기
+
+3. **온라인 강의**
+   - React 공식 튜토리얼: https://react.dev/learn
+   - TypeScript 핸드북: https://www.typescriptlang.org/ko/docs/handbook/intro.html
+
+4. **더 큰 목표**
+   - 새 페이즈 하나 만들기 (예: 결의 페이즈)
+   - 새 인수자 하나 만들기 (예: 정치인)
+
+---
+
+## 마치며
+
+이 프로젝트를 만들며 배운 큰 원칙 하나:
+
+> **"결정할 때마다 대안을 최소 하나 이상 생각해보라."**
+
+지금 고른 방향이 유일한 정답이 아니다. 다른 상황이면 다른 선택이 맞다.
+왜 이것을 골랐고, 안 고른 대안은 무엇인지 기록해두는 것 — 그게 나중에 이 코드를 이어받을
+사람(그리고 미래의 나 자신)에게 가장 큰 도움이 된다.
+
+즐거운 코딩 되시길.
