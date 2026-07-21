@@ -1,6 +1,6 @@
 "use client";
 
-import { BALANCE } from "@/game/balance";
+import { BALANCE, infoBuyCostAt } from "@/game/balance";
 import { SECTOR_LABELS } from "@/game/types";
 import SectorIcon from "../SectorIcon";
 import { fmt, type PhaseViewProps } from "./phaseCommon";
@@ -8,14 +8,14 @@ import { fmt, type PhaseViewProps } from "./phaseCommon";
 // INFO 페이즈: 정보 카드 캐러셀(내 회사 방향 + 투자자 인사이더 + 구매한 정보) + 정보 구매 UI.
 // SETTLE 과 함께 사용되는 공통 하단 준비 버튼은 여기 안 포함 (부모에서 렌더).
 export default function InfoView({ state, self, selfId, send }: PhaseViewProps) {
-  if (!self || (!self.privateInfo && !self.investorInsiderInfo)) return null;
+  if (!self) return null;
 
-  // [내 정보(또는 투자자 인사이더 정보), 구매한 정보들] 을 하나의 카드 리스트로 통합
+  // [내 정보, 구매한 정보들] 을 하나의 카드 리스트로 통합.
+  // 투자자는 자기 privateInfo 없음 → 구매한 정보만 카드로 표시 (없으면 빈 리스트).
   const cards: Array<{
     key: string;
     ownerId: string;
     isMine: boolean;
-    isInsider?: boolean;
     direction: "BULLISH" | "BEARISH";
   }> = [];
   if (self.privateInfo) {
@@ -26,15 +26,6 @@ export default function InfoView({ state, self, selfId, send }: PhaseViewProps) 
       direction: self.privateInfo,
     });
   }
-  if (self.investorInsiderInfo) {
-    cards.push({
-      key: `insider-${self.investorInsiderInfo.ownerId}`,
-      ownerId: self.investorInsiderInfo.ownerId,
-      isMine: false,
-      isInsider: true,
-      direction: self.investorInsiderInfo.direction,
-    });
-  }
   (self.purchasedInfos ?? []).forEach((info) => {
     cards.push({
       key: `p-${info.ownerId}`,
@@ -43,6 +34,7 @@ export default function InfoView({ state, self, selfId, send }: PhaseViewProps) 
       direction: info.direction,
     });
   });
+  const isInvestor = !!self.isInvestor;
 
   return (
     <>
@@ -50,9 +42,16 @@ export default function InfoView({ state, self, selfId, send }: PhaseViewProps) 
         <div className="flex justify-between items-baseline">
           <p className="text-sm font-medium">📇 이번 회차 정보 카드</p>
           <p className="text-xs text-neutral">
-            {cards.length}장 · 좌우로 넘겨보세요
+            {cards.length}장{cards.length > 1 && " · 좌우로 넘겨보세요"}
           </p>
         </div>
+        {cards.length === 0 && (
+          <div className="rounded-card border-2 border-dashed border-neutral/30 p-4 text-center text-xs text-neutral">
+            {isInvestor
+              ? "💼 투자자 — 자기 정보 없음. 아래에서 정보 구매 가능."
+              : "정보 없음"}
+          </div>
+        )}
         <div
           className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2"
           style={{ scrollbarWidth: "none" }}
@@ -71,11 +70,7 @@ export default function InfoView({ state, self, selfId, send }: PhaseViewProps) 
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-neutral">
-                    {card.isMine
-                      ? "🔒 내 회사 정보"
-                      : card.isInsider
-                        ? "🕵️ 투자자 인사이더"
-                        : "💰 구매한 정보"}
+                    {card.isMine ? "🔒 내 회사 정보" : "💰 구매한 정보"}
                   </span>
                   <span className="text-xs text-neutral">
                     회차 {state.round} 정산
@@ -118,13 +113,18 @@ export default function InfoView({ state, self, selfId, send }: PhaseViewProps) 
 
       {/* 정보 구매 */}
       <div className="rounded-card border border-neutral/20 p-3 flex flex-col gap-2">
-        <div className="flex justify-between items-baseline">
-          <p className="text-xs text-neutral">정보 구매</p>
-          <p className="text-xs text-neutral">
-            {self.purchasedInfos?.length ?? 0} / {BALANCE.infoBuyMax} ·{" "}
-            {fmt(BALANCE.infoBuyCost)}/건
-          </p>
-        </div>
+        {(() => {
+          const cost = infoBuyCostAt(state.round, state.maxRounds);
+          return (
+            <div className="flex justify-between items-baseline">
+              <p className="text-xs text-neutral">정보 구매</p>
+              <p className="text-xs text-neutral">
+                {self.purchasedInfos?.length ?? 0} / {BALANCE.infoBuyMax} ·{" "}
+                {fmt(cost)}/건
+              </p>
+            </div>
+          );
+        })()}
         {state.players
           .filter((other) => other.id !== selfId && state.companies[other.id])
           .map((other) => {
@@ -134,7 +134,8 @@ export default function InfoView({ state, self, selfId, send }: PhaseViewProps) 
             );
             const maxed =
               (self.purchasedInfos?.length ?? 0) >= BALANCE.infoBuyMax;
-            const tooPoor = self.cash < BALANCE.infoBuyCost;
+            const cost = infoBuyCostAt(state.round, state.maxRounds);
+            const tooPoor = self.cash < cost;
             return (
               <button
                 key={other.id}

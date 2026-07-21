@@ -5,8 +5,8 @@ import SectorIcon from "../SectorIcon";
 import Sparkline from "../Sparkline";
 import { fmt, type PhaseViewProps } from "./phaseCommon";
 
-// SETTLE 페이즈: 회사 분위기 · 이번 회차 뉴스 · 연구 성과 · 매매 순손익 랭킹 · 회사별 상세.
-// 총자산은 은닉하고 매매 순현금 흐름(roundTradesCashFlow)만 공개.
+// SETTLE 페이즈: 회사 분위기 · 이번 회차 뉴스 · 연구 성과 · 회사별 상세.
+// 총자산은 은닉. 매매 순손익도 노출 안 함 (심리전 유지).
 export default function SettleView({ state, self, selfId }: PhaseViewProps) {
   return (
     <div className="flex flex-col gap-3">
@@ -163,73 +163,6 @@ export default function SettleView({ state, self, selfId }: PhaseViewProps) {
           </div>
         );
       })()}
-
-      {/* 💰 매매 순손익 랭킹 */}
-      <div className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2">
-        <p className="text-sm font-medium">💰 이번 회차 매매 순손익</p>
-        <p className="text-[10px] text-neutral">
-          매도 대금 − 매수 대금. 양수 = 순매도, 음수 = 순매수. 총자산은 비공개.
-        </p>
-        <ul className="flex flex-col gap-1">
-          {[...state.players]
-            .sort(
-              (a, b) =>
-                (b.roundTradesCashFlow ?? 0) - (a.roundTradesCashFlow ?? 0)
-            )
-            .map((p, idx) => {
-              const flow = p.roundTradesCashFlow ?? 0;
-              const isMe = p.id === selfId;
-              const co = state.companies[p.id];
-              const rankBadge =
-                idx === 0 && flow > 0
-                  ? "🥇"
-                  : idx === 1 && flow > 0
-                    ? "🥈"
-                    : idx === 2 && flow > 0
-                      ? "🥉"
-                      : "";
-              return (
-                <li
-                  key={p.id}
-                  className={`flex items-center justify-between text-sm rounded-element px-2 py-1.5 ${
-                    isMe ? "bg-accentSoft border border-warning" : ""
-                  }`}
-                >
-                  <span className="flex items-center gap-1.5 min-w-0">
-                    {rankBadge && <span className="text-base">{rankBadge}</span>}
-                    {co && (
-                      <span className="mascot">
-                        {<SectorIcon sector={co.sector} size={20} />}
-                      </span>
-                    )}
-                    {p.isBot && <span className="text-xs">🤖</span>}
-                    <span className="truncate">
-                      {p.nickname}
-                      {isMe && (
-                        <span className="ml-1 text-xs text-warning">(나)</span>
-                      )}
-                      {p.isInvestor && (
-                        <span className="ml-1 text-[10px] text-neutral">💼</span>
-                      )}
-                    </span>
-                  </span>
-                  <span
-                    className={`tabular-nums font-medium ${
-                      flow > 0
-                        ? "text-success"
-                        : flow < 0
-                          ? "text-danger"
-                          : "text-neutral"
-                    }`}
-                  >
-                    {flow > 0 ? "+" : flow < 0 ? "" : "±"}
-                    {fmt(flow)}
-                  </span>
-                </li>
-              );
-            })}
-        </ul>
-      </div>
 
       {/* 회차 상세 (회사별 카드) */}
       <p className="text-sm text-neutral">📊 회차 {state.round} 상세</p>
