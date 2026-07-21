@@ -19,7 +19,10 @@ export const BALANCE = {
   // 실패 시 손실 없음 (돈만 날림)
   auditLieThreshold: 3, // 누적 거짓 N회 → 세무 조사 발동 (SPEC 3.7)
   auditPenaltyRange: [0.15, 0.25] as const, // 세무 조사 추가 악재 폭 (15~25%)
-  infoBuyCost: 500_000, // 정보 1건 구매 비용 (SPEC 2장 ①)
+  // 정보 1건 구매 비용 (SPEC 2장 ①). 회차에 따라 상승 — 초반은 저렴, 후반은 비싸다.
+  // 1회차 100만원부터 마지막 회차 200만원까지 선형 상승. 매턴 약 +14만원.
+  infoBuyCostBase: 1_000_000,   // 1회차 최소 가격
+  infoBuyCostMax: 2_000_000,    // 마지막 회차 상한
   infoBuyMax: 2, // 회차당 본인 외 추가로 살 수 있는 정보 건수
   // 거래량 → 주가 임팩트 계수 (SPEC 2장 ④). 0.2→0.4로 상향(매매 반응 더 크게).
   priceImpactCoef: 0.4,
@@ -30,6 +33,8 @@ export const BALANCE = {
   globalEventMagnitudeRange: [0.1, 0.25] as const, // 글로벌 이벤트 강도 (SPEC 3.6)
   techGrowthPerLevel: 0.01, // 기술 레벨당 정산 시 기본 주가 상승률 (+1%/lvl, SPEC 3.3)
   manageWindowSec: 30, // 관리 페이즈 타이머 (SPEC 3.3~3.5)
+  // INFO 페이즈 타이머 — 정보 확인/구매용. 초과 시 준비 안 한 사람 자동 준비 처리.
+  infoWindowSec: 60,
   // === 엑시트 시스템 (개편판) ===
   // 국가 매각: 시장가 × 이 비율 (즉시 확정)
   nationBuyoutRate: 0.5,
@@ -177,6 +182,16 @@ export const BALANCE = {
     },
   ] as const,
 };
+
+// 정보 구매 가격 — 회차별 선형 상승.
+// 1회차: infoBuyCostBase(100만원), maxRounds회차: infoBuyCostMax(200만원).
+// 회차 값 어긋나면 안전한 클램프.
+export function infoBuyCostAt(round: number, maxRounds: number): number {
+  if (maxRounds <= 1) return BALANCE.infoBuyCostBase;
+  const t = Math.max(0, Math.min(1, (round - 1) / (maxRounds - 1)));
+  const cost = BALANCE.infoBuyCostBase + (BALANCE.infoBuyCostMax - BALANCE.infoBuyCostBase) * t;
+  return Math.round(cost / 10_000) * 10_000; // 만원 단위 반올림
+}
 
 // 게임 규칙 상수 (SPEC 1장).
 // minPlayers는 1까지 허용 (테스트용 봇으로 인원 채우기 가능 - SPEC 1.0.5).

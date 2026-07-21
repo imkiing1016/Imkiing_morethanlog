@@ -1,4 +1,4 @@
-import { BALANCE, NEWS_LIMIT, ROOM, SHARES_OUTSTANDING } from "./balance";
+import { BALANCE, NEWS_LIMIT, ROOM, SHARES_OUTSTANDING, infoBuyCostAt } from "./balance";
 import { ROUND_PHASES, SECTORS, SECTOR_LABELS } from "./types";
 import { clampTrust, computeStocksValue, getManageContext } from "./helpers";
 import { pickHeadline } from "./logic/headlines";
@@ -174,10 +174,12 @@ export class GameRoom {
     if (player.purchasedInfos.some((x) => x.ownerId === targetOwnerId)) return;
     // 한도 체크.
     if (player.purchasedInfos.length >= BALANCE.infoBuyMax) return;
+    // 회차별 정보 가격 계산.
+    const cost = infoBuyCostAt(this.state.round, this.state.maxRounds);
     // 현금 충분 확인.
-    if (player.cash < BALANCE.infoBuyCost) return;
+    if (player.cash < cost) return;
 
-    player.cash -= BALANCE.infoBuyCost;
+    player.cash -= cost;
     player.purchasedInfos.push({
       ownerId: targetOwnerId,
       direction: target.privateInfo,
@@ -817,6 +819,11 @@ export class GameRoom {
         co.researchDoneThisManage = false;
         co.lastResearchOutcome = undefined;
       }
+    } else if (phase === "INFO") {
+      // INFO 60초 타이머. 초과 시 미준비 유저 자동 준비 처리 후 다음 페이즈.
+      const ms = BALANCE.infoWindowSec * 1000;
+      this.state.phaseDeadline = Date.now() + ms;
+      this.tradeTimer = setTimeout(() => this.onInfoTimeout(), ms);
     } else {
       this.state.phaseDeadline = undefined;
     }
@@ -838,17 +845,11 @@ export class GameRoom {
       p.roundStockBuyAmount = 0;
 
       if (p.isInvestor || !this.state.companies[p.id]) {
-        // 투자자: 자기 회사 없음 → privateInfo 없음.
-        // 대신 랜덤 회사의 방향을 인사이더 정보로 무료 지급 (SPEC 3.5 특권).
+        // 투자자: 자기 회사 없음 → 자기 privateInfo 도 없음.
+        // 인사이더 정보 무료 지급 특권은 삭제됨 (밸런스 문제로).
+        // 정보가 필요하면 다른 사람과 동일하게 INFO 페이즈에서 돈 내고 구매.
         p.privateInfo = undefined;
-        const targets = Object.values(this.state.companies);
-        if (targets.length > 0) {
-          const t = targets[Math.floor(Math.random() * targets.length)];
-          p.investorInsiderInfo = {
-            ownerId: t.ownerId,
-            direction: Math.random() < 0.5 ? "BULLISH" : "BEARISH",
-          };
-        }
+        p.investorInsiderInfo = undefined;
       } else {
         p.privateInfo = Math.random() < 0.5 ? "BULLISH" : "BEARISH";
       }
@@ -1128,6 +1129,16 @@ export class GameRoom {
 
   private onManageTimeout() {
     if (this.state.phase !== "MANAGE") return;
+    this.advancePhase();
+  }
+
+  // INFO 60초 초과 → 아직 준비 안 한 접속 유저 자동 준비 처리 후 POSITION 진입.
+  // 봇/연결 끊긴 유저는 원래 준비 상태와 무관하게 흐름 진행.
+  private onInfoTimeout() {
+    if (this.state.phase !== "INFO") return;
+    for (const p of this.state.players) {
+      if (!p.isBot && p.connected) p.ready = true;
+    }
     this.advancePhase();
   }
 

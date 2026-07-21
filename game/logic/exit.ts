@@ -126,6 +126,8 @@ export function generateExitOffers(
   pushNews: PushNewsFn
 ): void {
   state.exitOffers = [];
+  // 1회차엔 제안 없음. 최소 한 판 돌아본 후부터 매각 유혹이 시작된다.
+  if (state.round < 2) return;
   let idCounter = Date.now();
   const roundsLeft = state.maxRounds - state.round;
   const endgameBonus =
@@ -202,14 +204,13 @@ export function generateExitOffers(
   for (const [cid, offers] of grouped) {
     const co = state.companies[cid];
     if (!co) continue;
-    const best = offers.reduce((a, b) => (a.price > b.price ? a : b));
+    // 인수자 정체·가격·톤을 뉴스에서 감춘다. "밀봉 봉투 도착" 스타일.
+    // 좋은 제안인지 나쁜 제안인지는 관리 페이즈에서 카드 열어봐야 알 수 있게.
     pushNews(
-      best.buyerIcon,
-      `${co.name} 인수 제안 도착`,
-      `${offers.length}건 · 최고 ${best.buyerLabel} ${(
-        best.priceRate * 100
-      ).toFixed(0)}%`,
-      best.buyerKey === "HEDGE" || best.buyerKey === "HAWK" ? "bad" : "good"
+      "✉️",
+      `${co.name} 앞 밀봉 봉투 도착`,
+      `${offers.length}건 · 관리 페이즈에서 확인 가능`,
+      "neutral"
     );
   }
 }

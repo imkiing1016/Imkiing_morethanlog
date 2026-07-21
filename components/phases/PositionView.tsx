@@ -4,6 +4,7 @@ import { useState } from "react";
 import { BALANCE } from "@/game/balance";
 import { SECTOR_LABELS } from "@/game/types";
 import SectorIcon from "../SectorIcon";
+import HoldRepeatButton from "../HoldRepeatButton";
 import { fmt, type PhaseViewProps } from "./phaseCommon";
 
 // POSITION 페이즈: 회사별 ±수량 비공개 매수/매도 의도 제출.
@@ -42,6 +43,9 @@ export default function PositionView({
           const step = BALANCE.liveTradeStep;
           const canDecr = qty - step >= minQty;
           const canIncr = qty + step <= maxQty;
+          // 매도(qty<0) 예약 시 시각적으로 보유가 그만큼 줄어드는 것처럼 보이게.
+          const projectedHeld = held + qty; // qty 가 음수면 held 감소, 양수면 증가
+          const heldChanged = qty !== 0;
           return (
             <div
               key={other.id}
@@ -57,25 +61,45 @@ export default function PositionView({
                     )}
                   </p>
                   <p className="text-xs text-neutral">
-                    {SECTOR_LABELS[co.sector]} · 보유 {held}주
+                    {SECTOR_LABELS[co.sector]} · 보유{" "}
+                    {heldChanged ? (
+                      <>
+                        <span className="line-through text-neutral/60">
+                          {held}
+                        </span>{" "}
+                        <span
+                          className={
+                            qty > 0
+                              ? "text-success font-medium"
+                              : "text-danger font-medium"
+                          }
+                        >
+                          → {projectedHeld}
+                        </span>
+                        주
+                      </>
+                    ) : (
+                      `${held}주`
+                    )}
                     {isMine && ` · 최대 ${selfCap}주`}
                   </p>
                 </div>
                 <span className="tabular-nums">{fmt(co.price)}</span>
               </div>
               <div className="flex items-center justify-end gap-3">
-                <button
+                <HoldRepeatButton
                   disabled={!canDecr}
-                  onClick={() =>
+                  aria-label={`${co.name} 매도`}
+                  onStep={() =>
                     setPositionOrders((o) => ({
                       ...o,
                       [other.id]: Math.max(minQty, (o[other.id] ?? 0) - step),
                     }))
                   }
-                  className="w-10 h-10 rounded-element border-2 border-cardEdge bg-card text-xl font-medium disabled:opacity-30"
+                  className="w-10 h-10 rounded-element border-2 border-cardEdge bg-card text-xl font-medium disabled:opacity-30 select-none touch-manipulation"
                 >
                   −
-                </button>
+                </HoldRepeatButton>
                 <span
                   className={`tabular-nums min-w-[3rem] text-center font-medium text-lg ${
                     qty > 0
@@ -87,18 +111,19 @@ export default function PositionView({
                 >
                   {qty > 0 ? `+${qty}` : qty}
                 </span>
-                <button
+                <HoldRepeatButton
                   disabled={!canIncr}
-                  onClick={() =>
+                  aria-label={`${co.name} 매수`}
+                  onStep={() =>
                     setPositionOrders((o) => ({
                       ...o,
                       [other.id]: Math.min(maxQty, (o[other.id] ?? 0) + step),
                     }))
                   }
-                  className="w-10 h-10 rounded-element border-2 border-cardEdge bg-card text-xl font-medium disabled:opacity-30"
+                  className="w-10 h-10 rounded-element border-2 border-cardEdge bg-card text-xl font-medium disabled:opacity-30 select-none touch-manipulation"
                 >
                   +
-                </button>
+                </HoldRepeatButton>
               </div>
             </div>
           );
