@@ -1,5 +1,5 @@
 import { BALANCE, NEWS_LIMIT, ROOM, SHARES_OUTSTANDING, infoBuyCostAt } from "./balance";
-import { ROUND_PHASES, SECTORS, SECTOR_LABELS } from "./types";
+import { EMOTE_KINDS, ROUND_PHASES, SECTORS, SECTOR_LABELS } from "./types";
 import { clampTrust, computeStocksValue, getManageContext } from "./helpers";
 import { pickHeadline } from "./logic/headlines";
 import { applyImpact, setPriceAndRecord } from "./logic/pricing";
@@ -14,6 +14,7 @@ import {
 import type {
   ClientMessage,
   Declaration,
+  EmoteKind,
   GameState,
   Phase,
   PlayerState,
@@ -152,10 +153,54 @@ export class GameRoom {
       case "rematch":
         this.handleRematch(id);
         break;
+      case "sendEmote":
+        this.handleSendEmote(id, msg.kind);
+        break;
       case "ready":
         this.handleReady(id);
         break;
     }
+  }
+
+  // 이모트 스팸 방지 상태 (플레이어별 최근 발신 시각들).
+  // 3초 이내 5회 이상 발신 시 8초 쿨다운. 클라도 자체 제한하지만 서버가 최종 방어.
+  private emoteHistory: Map<string, number[]> = new Map();
+  private emoteCooldownUntil: Map<string, number> = new Map();
+  private emoteIdCounter = 1;
+
+  private handleSendEmote(id: string, kind: EmoteKind) {
+    if (!EMOTE_KINDS.includes(kind)) return;
+    // ENDED · LOBBY 는 이모트 불허 (재밌는 순간에만)
+    if (this.state.phase === "ENDED" || this.state.phase === "LOBBY") return;
+    const player = this.state.players.find((p) => p.id === id);
+    if (!player) return;
+
+    const now = Date.now();
+    const cd = this.emoteCooldownUntil.get(id) ?? 0;
+    if (now < cd) return; // 쿨다운 중 무시
+
+    const history = (this.emoteHistory.get(id) ?? []).filter((t) => now - t <= 3000);
+    if (history.length >= 5) {
+      // 3초 5회 초과 → 8초 쿨다운
+      this.emoteCooldownUntil.set(id, now + 8000);
+      this.emoteHistory.set(id, []);
+      return;
+    }
+    history.push(now);
+    this.emoteHistory.set(id, history);
+
+    // 활성 이모트 추가 + 만료된 것 정리 (5초 이상 지난 것)
+    if (!this.state.activeEmotes) this.state.activeEmotes = [];
+    this.state.activeEmotes = this.state.activeEmotes.filter(
+      (e) => now - e.ts <= 5000
+    );
+    this.state.activeEmotes.push({
+      id: this.emoteIdCounter++,
+      playerId: id,
+      kind,
+      ts: now,
+    });
+    this.broadcastSnapshot();
   }
 
   // SPEC 2장 ①: 정보 페이즈에서 돈 내고 다른 회사 정보 1건 구매.
