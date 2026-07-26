@@ -572,6 +572,17 @@ export class GameRoom {
       researchDoneThisManage: false,
       lastResearchOutcome: undefined,
     };
+    // 부활 IPO 히스토리 엔트리 (같은 오너지만 별개 엔트리).
+    if (!this.state.companyHistory) this.state.companyHistory = [];
+    this.state.companyHistory.push({
+      ownerId: id,
+      ownerNickname: player.nickname,
+      name: `${player.nickname} 사`,
+      sector,
+      startingPrice: newPrice,
+      startRound: this.state.round,
+      roundClosePrices: [],
+    });
 
     this.state.log.push({
       round: this.state.round,
@@ -689,6 +700,8 @@ export class GameRoom {
 
     // 회사는 SETUP 에서 각자 만든다. 여기서는 자본만 지급하고 초기화.
     this.state.companies = {};
+    // 회고 그래프 히스토리도 새 판이니 초기화.
+    this.state.companyHistory = [];
     for (const p of this.state.players) {
       p.cash = BALANCE.startingCash;
       p.holdings = {};
@@ -738,6 +751,17 @@ export class GameRoom {
       researchDoneThisManage: false,
       lastResearchOutcome: undefined,
     };
+    // ENDED 회고 그래프용 히스토리 엔트리 초기화.
+    if (!this.state.companyHistory) this.state.companyHistory = [];
+    this.state.companyHistory.push({
+      ownerId: id,
+      ownerNickname: player.nickname,
+      name: cleanName,
+      sector,
+      startingPrice: BALANCE.startingPrice,
+      startRound: 1,
+      roundClosePrices: [],
+    });
     // 시작 자본에서 출자분만큼 차감(회차 1 시작 시 현금에 반영).
     player.cash = BALANCE.startingCash - seed;
     player.seedInvested = seed;
@@ -1141,6 +1165,22 @@ export class GameRoom {
 
     // 5) 글로벌 이벤트 소비
     this.state.pendingGlobalEvent = undefined;
+
+    // 6) 회고 그래프용: 이 회차 종가를 히스토리에 push.
+    //    엑시트 처리(processBankingSettle 압류)로 이미 사라진 회사는 push 안 함.
+    if (this.state.companyHistory) {
+      for (const entry of this.state.companyHistory) {
+        if (entry.exitRound !== undefined) continue;
+        const co = this.state.companies[entry.ownerId];
+        if (!co) continue;
+        // 같은 오너의 히스토리가 여럿 있으면 (부활 IPO 포함) 가장 최근 = 살아있는 것
+        // 이지만 위 exitRound 체크로 이미 걸러짐.
+        // 이번 회차가 이 회사의 startRound 이후면 push.
+        if (this.state.round >= entry.startRound) {
+          entry.roundClosePrices.push(co.price);
+        }
+      }
+    }
   }
 
   // SETTLE 정산 은행 단계 — logic/bank.ts 로 위임.

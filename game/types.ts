@@ -182,6 +182,23 @@ export interface NewsEvent {
   targetOwnerId?: string;
 }
 
+// 회사별 회차 히스토리 — ENDED 페이즈 전체 그래프용.
+// 살아있는 회사와 엑시트한 회사 모두 포함. 엑시트 시점/이유 기록.
+export interface CompanyHistoryEntry {
+  ownerId: string;
+  ownerNickname: string;
+  name: string;
+  sector: Sector;
+  startingPrice: number;
+  // 이 회사가 등장한 첫 회차 (SETUP 은 1, 부활 IPO 는 그 회차).
+  startRound: number;
+  // 회차별 최종 종가 (index 0 = startRound close). 회차 순으로 push.
+  roundClosePrices: number[];
+  // 엑시트한 경우: 해당 회차 + 사유. 아직 살아있으면 undefined.
+  exitRound?: number;
+  exitReason?: "NATION" | "HAWK" | "HEDGE" | "CHAEBOL" | "VC" | "MYSTERY" | "BANK";
+}
+
 // 게임 종료 시 총자산 랭킹 한 행.
 export interface RankingRow {
   playerId: string;
@@ -246,6 +263,8 @@ export interface GameState {
   finalRankings?: RankingRow[];
   // 활성 이모트 (3초 후 자동 만료). 브로드캐스트에 포함.
   activeEmotes?: ActiveEmote[];
+  // 회사별 회차 히스토리 — ENDED 페이즈 전체 회고 그래프용.
+  companyHistory?: CompanyHistoryEntry[];
   log: GameLogEntry[];
 }
 

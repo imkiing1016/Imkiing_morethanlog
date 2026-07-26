@@ -1,7 +1,7 @@
 // 회사 매각/압류 실행 + NPC 인수 제안 생성 로직.
 // GameRoom 에서 pushNews 콜백을 주입받아 사용. broadcast 는 호출측 책임.
 import { BALANCE } from "../balance";
-import type { Company, GameState, PlayerState } from "../types";
+import type { Company, CompanyHistoryEntry, GameState, PlayerState } from "../types";
 import { buyerSpotlightTone, pickQuote } from "./exitBuyers";
 import { setPriceAndRecord } from "./pricing";
 
@@ -82,6 +82,19 @@ export function executeCompanyExit(
   state.exitOffers = state.exitOffers.filter(
     (o) => o.companyOwnerId !== soldCoId
   );
+
+  // 3.5) 회고 그래프용: 히스토리에서 이 회사의 (아직 exitRound 없는) 최근 엔트리 마킹.
+  //      부활 IPO 로 같은 오너에 여러 엔트리가 있을 수 있으니 마지막부터 뒤로 검색.
+  if (state.companyHistory) {
+    for (let i = state.companyHistory.length - 1; i >= 0; i--) {
+      const e = state.companyHistory[i];
+      if (e.ownerId === soldCoId && e.exitRound === undefined) {
+        e.exitRound = state.round;
+        e.exitReason = buyerKey as CompanyHistoryEntry["exitReason"];
+        break;
+      }
+    }
+  }
 
   // 4) 동섹터 시장 파장
   const ripple = (BALANCE.ripple as Record<string, number>)[buyerKey] ?? 0;
