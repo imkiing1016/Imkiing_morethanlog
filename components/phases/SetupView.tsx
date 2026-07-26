@@ -52,20 +52,68 @@ export default function SetupView({
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        {SECTORS.map((s) => (
-          <button
-            key={s}
-            onClick={() => setSector(s)}
-            className={`rounded-card border-2 px-3 py-3 text-sm font-medium flex items-center gap-2 ${
-              sector === s
-                ? "border-warning bg-accentSoft text-ink"
-                : "border-cardEdge bg-card text-ink"
-            }`}
-          >
-            <SectorIcon sector={s} size={32} />
-            {SECTOR_LABELS[s]}
-          </button>
-        ))}
+        {SECTORS.map((s) => {
+          // 이 섹터를 소유한 회사 (있으면 = 그 플레이어가 확정한 것).
+          const takenCo = Object.values(state.companies).find(
+            (c) => c.sector === s
+          );
+          const takenByMe = takenCo?.ownerId === self?.id;
+          const takenByOther = !!takenCo && !takenByMe;
+          const owner = takenCo
+            ? state.players.find((p) => p.id === takenCo.ownerId)
+            : undefined;
+          const picked = sector === s && !takenByOther;
+          return (
+            <button
+              key={s}
+              onClick={() => !takenByOther && setSector(s)}
+              disabled={takenByOther}
+              title={
+                takenByOther
+                  ? `${owner?.nickname ?? "다른 플레이어"} 확정`
+                  : undefined
+              }
+              className={`rounded-card border-2 px-3 py-2 text-sm font-medium flex flex-col items-stretch gap-1 relative ${
+                takenByMe
+                  ? "border-success bg-success/10 text-ink"
+                  : picked
+                    ? "border-warning bg-accentSoft text-ink"
+                    : takenByOther
+                      ? "border-cardEdge/40 bg-card/60 text-neutral cursor-not-allowed"
+                      : "border-cardEdge bg-card text-ink"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <SectorIcon sector={s} size={32} />
+                <span className={takenByOther ? "line-through" : ""}>
+                  {SECTOR_LABELS[s]}
+                </span>
+              </div>
+              {/* 오너 배지 (닉네임 + 확정 표시) */}
+              {owner ? (
+                <div
+                  className={`flex items-center gap-1 text-[10px] rounded-element px-1.5 py-0.5 ${
+                    takenByMe
+                      ? "bg-success text-paper"
+                      : "bg-neutral/20 text-neutral"
+                  }`}
+                >
+                  <span>👤</span>
+                  <span className="truncate flex-1 text-left font-medium">
+                    {owner.nickname}
+                    {takenByMe && " (나)"}
+                    {owner.isBot && " 🤖"}
+                  </span>
+                  <span className="font-bold">✓</span>
+                </div>
+              ) : (
+                <div className="text-[10px] text-neutral text-left px-0.5">
+                  {picked ? "🟡 선택됨 · 확정 대기" : "· 비어 있음"}
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex flex-col gap-2">

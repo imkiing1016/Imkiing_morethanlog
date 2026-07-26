@@ -80,7 +80,8 @@ body {
   animation: fadein 180ms ease-out;
 }
 
-/* Dock 이 하단 fixed 이므로 페이지 하단에 여백 확보 (본문 내용이 가려지지 않도록). */
+/* Dock 이 하단 fixed 이므로 페이지 하단에 넉넉한 여백 확보 (본문 내용 가려짐 방지).
+   Dock 자체 ~100px + 이모트 풍선 여유 + 접기 버튼 + 안전 여백. */
 body {
-  padding-bottom: 96px;
+  padding-bottom: 160px;
 }
