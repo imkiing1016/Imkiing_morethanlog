@@ -30,6 +30,16 @@ export default function SetupView({
     }
   }, [state.phase]);
 
+  // 내가 고른 섹터를 다른 플레이어(봇 포함)가 먼저 잡으면 자동 해제.
+  // 봇 자동 SETUP 은 1.2초 지연이라 인간이 이미 골랐을 수 있어서 필요.
+  useEffect(() => {
+    if (!sector) return;
+    const takenByOther = Object.values(state.companies).some(
+      (c) => c.sector === sector && c.ownerId !== self?.id
+    );
+    if (takenByOther) setSector(null);
+  }, [state.companies, sector, self?.id]);
+
   const canSubmitSetup = sector !== null && bizName.trim().length > 0;
 
   return (

@@ -403,7 +403,8 @@ export class GameRoom {
       outcome === "fail"
         ? `${player.nickname} 투자 ${config.cost.toLocaleString()}원 · 별 소득 없이 마무리`
         : `${player.nickname} 투자 ${config.cost.toLocaleString()}원 → 주가 +${(boost * 100).toFixed(1)}%`,
-      outcome === "fail" ? "neutral" : "good"
+      outcome === "fail" ? "neutral" : "good",
+      { targetOwnerId: co.ownerId }
     );
     this.broadcastSnapshot();
   }
@@ -585,6 +586,7 @@ export class GameRoom {
         spotlight: true,
         flavorQuote: "포기하지 않는 자만이 시장에 남는다.",
         spotlightTone: "rebirth",
+        targetOwnerId: id,
       }
     );
     this.broadcastSnapshot();
@@ -1107,7 +1109,8 @@ export class GameRoom {
           "🚨",
           `${co.name} 세무 조사`,
           `거짓 선언 누적 · 주가 ${(auditDelta * 100).toFixed(1)}%`,
-          "bad"
+          "bad",
+          { targetOwnerId: co.ownerId }
         );
       }
       // (연구 결과 로그는 handleResearch 발동 시점에 이미 기록됨)
@@ -1365,6 +1368,7 @@ export class GameRoom {
       flavorQuote?: string;
       spotlightTone?: "celebration" | "hostile" | "somber" | "rebirth";
       flash?: boolean;
+      targetOwnerId?: string;
     }
   ) {
     this.state.newsEvents.push({
@@ -1379,6 +1383,7 @@ export class GameRoom {
       flavorQuote: extras?.flavorQuote,
       spotlightTone: extras?.spotlightTone,
       flash: extras?.flash,
+      targetOwnerId: extras?.targetOwnerId,
     });
     if (this.state.newsEvents.length > NEWS_LIMIT) {
       this.state.newsEvents.splice(
@@ -1482,7 +1487,7 @@ export class GameRoom {
         headline,
         `${co.name} 실시간 ${isUp ? "+" : ""}${(signed * 100).toFixed(1)}%`,
         isUp ? "good" : "bad",
-        { flash: true }
+        { flash: true, targetOwnerId: co.ownerId }
       );
     }
     if (anyChange) this.broadcastSnapshot();
