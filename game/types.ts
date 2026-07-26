@@ -177,6 +177,9 @@ export interface NewsEvent {
   spotlightTone?: SpotlightTone;
   // TRADE 실시간 이벤트용 — 뉴스 팝업이 잠깐 반짝이는 효과.
   flash?: boolean;
+  // 관련 회사의 오너 id (있으면 "내 회사" vs "다른 사람 회사" 분류에 사용).
+  // 시장 전체 이벤트(글로벌/블랙스완)는 undefined.
+  targetOwnerId?: string;
 }
 
 // 게임 종료 시 총자산 랭킹 한 행.

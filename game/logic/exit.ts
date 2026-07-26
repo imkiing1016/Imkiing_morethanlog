@@ -16,6 +16,7 @@ export type PushNewsFn = (
     flavorQuote?: string;
     spotlightTone?: "celebration" | "hostile" | "somber" | "rebirth";
     flash?: boolean;
+    targetOwnerId?: string;
   }
 ) => void;
 
@@ -114,6 +115,7 @@ export function executeCompanyExit(
       spotlight: true,
       flavorQuote: pickQuote(buyerKey),
       spotlightTone: buyerSpotlightTone(buyerKey),
+      targetOwnerId: seller.id,
     }
   );
 }
@@ -211,7 +213,8 @@ export function generateExitOffers(
       "✉️",
       `${co.name} 앞 밀봉 봉투 도착`,
       `${offers.length}건 · 관리 페이즈에서 확인 가능`,
-      "neutral"
+      "neutral",
+      { targetOwnerId: cid }
     );
   }
 }

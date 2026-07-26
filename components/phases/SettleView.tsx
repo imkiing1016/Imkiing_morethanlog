@@ -75,35 +75,114 @@ export default function SettleView({ state, self, selfId }: PhaseViewProps) {
         </ul>
       </div>
 
-      {/* 📰 이번 회차 뉴스 */}
+      {/* 📰 이번 회차 뉴스 (분류 · 내 회사 / 다른 사람 / 시장) */}
       {(() => {
-        const roundNews = state.newsEvents.filter((n) => n.round === state.round);
+        const roundNews = state.newsEvents.filter(
+          (n) => n.round === state.round
+        );
         if (roundNews.length === 0) return null;
+
+        const mine = roundNews.filter(
+          (n) => n.targetOwnerId && n.targetOwnerId === selfId
+        );
+        const others = roundNews.filter(
+          (n) => n.targetOwnerId && n.targetOwnerId !== selfId
+        );
+        const market = roundNews.filter((n) => !n.targetOwnerId);
+
+        // 다른 사람 뉴스는 소유자별로 그룹핑 (한 회사의 뉴스가 뭉쳐 보이게)
+        const othersGrouped = new Map<string, typeof others>();
+        for (const n of others) {
+          const k = n.targetOwnerId!;
+          if (!othersGrouped.has(k)) othersGrouped.set(k, []);
+          othersGrouped.get(k)!.push(n);
+        }
+
+        const renderItem = (
+          n: (typeof roundNews)[number],
+          ownerBadge?: React.ReactNode
+        ) => (
+          <li
+            key={n.id}
+            className={`text-xs rounded-element px-2 py-1.5 border ${
+              n.tone === "good"
+                ? "border-success/40 bg-success/10"
+                : n.tone === "bad"
+                  ? "border-danger/40 bg-danger/10"
+                  : "border-cardEdge bg-paper"
+            }`}
+          >
+            <div className="flex items-baseline gap-1 flex-wrap">
+              {ownerBadge}
+              <span className="text-sm">{n.emoji}</span>
+              <span className="font-medium">{n.headline}</span>
+            </div>
+            {n.detail && (
+              <span className="block text-neutral mt-0.5">{n.detail}</span>
+            )}
+          </li>
+        );
+
         return (
-          <div className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-2">
+          <div className="rounded-card border-2 border-cardEdge bg-card p-3 flex flex-col gap-3">
             <p className="text-sm font-medium">
               📰 이번 회차 뉴스 · {roundNews.length}건
             </p>
-            <ul className="flex flex-col gap-1.5">
-              {roundNews.map((n) => (
-                <li
-                  key={n.id}
-                  className={`text-xs rounded-element px-2 py-1.5 border ${
-                    n.tone === "good"
-                      ? "border-success/40 bg-success/10"
-                      : n.tone === "bad"
-                        ? "border-danger/40 bg-danger/10"
-                        : "border-cardEdge bg-paper"
-                  }`}
-                >
-                  <span className="text-sm mr-1">{n.emoji}</span>
-                  <span className="font-medium">{n.headline}</span>
-                  {n.detail && (
-                    <span className="block text-neutral mt-0.5">{n.detail}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
+
+            {/* 내 회사 */}
+            {mine.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[10px] text-warning font-medium">
+                  🔒 내 회사 ({mine.length})
+                </p>
+                <ul className="flex flex-col gap-1.5 pl-1 border-l-2 border-warning/40">
+                  {mine.map((n) => renderItem(n))}
+                </ul>
+              </div>
+            )}
+
+            {/* 다른 사람 회사 (오너별 그룹) */}
+            {othersGrouped.size > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[10px] text-neutral font-medium">
+                  👥 다른 사람 ({others.length})
+                </p>
+                <ul className="flex flex-col gap-1.5 pl-1 border-l-2 border-neutral/30">
+                  {Array.from(othersGrouped.entries()).map(([ownerId, items]) => {
+                    const owner = state.players.find((p) => p.id === ownerId);
+                    const co = state.companies[ownerId];
+                    const badgeText = owner
+                      ? `${owner.nickname}${co ? ` · ${co.name}` : ""}`
+                      : co
+                        ? co.name
+                        : "—";
+                    return items.map((n) =>
+                      renderItem(
+                        n,
+                        <span
+                          key={`b-${n.id}`}
+                          className="text-[9px] text-neutral bg-paper border border-cardEdge rounded-element px-1"
+                        >
+                          👤 {badgeText}
+                        </span>
+                      )
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {/* 시장 전체 (섹터·글로벌·블랙스완) */}
+            {market.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[10px] text-info font-medium">
+                  🌐 시장 전체 ({market.length})
+                </p>
+                <ul className="flex flex-col gap-1.5 pl-1 border-l-2 border-info/40">
+                  {market.map((n) => renderItem(n))}
+                </ul>
+              </div>
+            )}
           </div>
         );
       })()}

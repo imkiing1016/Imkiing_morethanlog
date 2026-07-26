@@ -43,7 +43,8 @@ export function processBankingSettle(
         "📮",
         `${p.nickname} 매매 이익세 납부`,
         `투자자 세금 ${collected.toLocaleString()}원 · 이번 회차 순매도 우세`,
-        "neutral"
+        "neutral",
+        { targetOwnerId: p.id }
       );
     }
   }
@@ -96,7 +97,8 @@ export function processBankingSettle(
           isMarginCall ? "🚨" : "⚠️",
           `${co.name} 이자 미납 ${p.loanMissCount}회`,
           `주가 ${(drop * 100).toFixed(1)}% ↓ · 신뢰 −1${isMarginCall ? " · 마진콜 · 다음 미납이면 압류" : ""}`,
-          "bad"
+          "bad",
+          { targetOwnerId: co.ownerId }
         );
       }
     }
