@@ -14,12 +14,28 @@ export default function TradeView({ state, self, selfId, send }: PhaseViewProps)
   const [tradeView, setTradeView] = useState<"all" | "detail">("all");
   const [focusCompanyId, setFocusCompanyId] = useState<string | null>(null);
 
+  const [helpOpen, setHelpOpen] = useState(false);
+
   return (
     <section className="flex flex-col gap-3">
-      <p className="text-sm text-neutral">
-        매수/매도하면 거래량에 따라 주가가 즉시 변동합니다. 한 번에{" "}
-        {BALANCE.liveTradeStep}주씩 · 꾹 누르면 반복.
-      </p>
+      {/* 안내: ⓘ 아이콘 클릭 시 토글 */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setHelpOpen((o) => !o)}
+          aria-expanded={helpOpen}
+          aria-label="거래 안내 보기"
+          className="w-6 h-6 rounded-full border border-cardEdge bg-card text-neutral text-xs font-medium flex items-center justify-center active:scale-95"
+        >
+          ⓘ
+        </button>
+        {helpOpen && (
+          <p className="text-xs text-neutral flex-1">
+            매수/매도하면 거래량에 따라 주가가 즉시 변동합니다. 한 번에{" "}
+            {BALANCE.liveTradeStep}주씩 · 꾹 누르면 반복.
+          </p>
+        )}
+      </div>
 
       <div className="flex gap-1 p-1 rounded-element border-2 border-cardEdge bg-paper">
         <button

@@ -95,21 +95,12 @@ export default function SetupView({
           onChange={(e) => setSeedManwon(Number(e.target.value))}
           className="accent-warning"
         />
-        {/* 출자 효과 안내 (2줄) */}
-        <div className="rounded-element bg-accentSoft border border-cardEdge p-2 flex flex-col gap-1">
-          <p className="text-xs">
-            📊 <b>출자 많음</b> → 회사가 <span className="text-success">안정</span>{" "}
-            운영 (실시간 주가 흔들림 작음)
-          </p>
-          <p className="text-xs">
-            🎢 <b>출자 적음</b> → 그래프 등락이{" "}
-            <span className="text-danger">비트코인처럼 드라마틱</span>
-          </p>
-          <p className="text-[10px] text-neutral">
-            + 매 정산 시 출자 비율만큼 최대 +
-            {(BALANCE.seedGrowthMax * 100).toFixed(1)}% 성장 보너스
-          </p>
-        </div>
+        <p className="text-xs text-neutral">
+          내 회사에 박는 자본. 많이 넣을수록 회사가 안정적으로 운영되고,
+          적을수록 그래프 등락이 커집니다.
+          매 회차 정산 시 출자 비율만큼 최대 +
+          {(BALANCE.seedGrowthMax * 100).toFixed(1)}% 성장 보너스.
+        </p>
       </div>
 
       <button
