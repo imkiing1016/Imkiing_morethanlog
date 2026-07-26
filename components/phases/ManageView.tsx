@@ -1,7 +1,7 @@
 "use client";
 
 import { BALANCE } from "@/game/balance";
-import { SECTORS, SECTOR_LABELS } from "@/game/types";
+import { SECTOR_LABELS } from "@/game/types";
 import { clampTrust } from "@/game/helpers";
 import SectorIcon from "../SectorIcon";
 import { fmt, type PhaseViewProps } from "./phaseCommon";
@@ -247,40 +247,6 @@ export default function ManageView({
             );
           })()}
 
-          {/* 피벗 */}
-          {(() => {
-            const marketCap = myCompany.price * myCompany.sharesOutstanding;
-            const cost = Math.floor(marketCap * BALANCE.pivotCostRate);
-            const affordable = (self?.cash ?? 0) >= cost;
-            return (
-              <details className="rounded-element border-2 border-cardEdge bg-card px-3 py-2">
-                <summary className="cursor-pointer flex justify-between items-center">
-                  <span>
-                    🔀 사업 전환 (피벗)
-                    <span className="block text-xs text-neutral">
-                      새 섹터 + 신뢰도 3 리셋
-                    </span>
-                  </span>
-                  <span className="text-sm text-danger tabular-nums">
-                    −{fmt(cost)}
-                  </span>
-                </summary>
-                <div className="grid grid-cols-2 gap-2 mt-3">
-                  {SECTORS.filter((s) => s !== myCompany.sector).map((s) => (
-                    <button
-                      key={s}
-                      disabled={!affordable}
-                      onClick={() => send({ type: "pivot", newSector: s })}
-                      className="rounded-element border-2 border-cardEdge bg-paper px-2 py-2 text-sm flex items-center gap-1 disabled:opacity-40"
-                    >
-                      <SectorIcon sector={s} size={20} />
-                      <span>{SECTOR_LABELS[s]}</span>
-                    </button>
-                  ))}
-                </div>
-              </details>
-            );
-          })()}
 
           {/* 국가 매각 */}
           {(() => {

@@ -40,6 +40,30 @@ export const SECTOR_MASCOTS: Record<Sector, string> = {
   DEFENSE: "🛡️", // 방패
 };
 
+// 감정 이모트 종류 (플레이어 카드 위로 풍선처럼 떠오름).
+export type EmoteKind = "laugh" | "sad" | "joy" | "angry";
+export const EMOTE_KINDS: EmoteKind[] = ["laugh", "sad", "joy", "angry"];
+export const EMOTE_EMOJI: Record<EmoteKind, string> = {
+  laugh: "😏",
+  sad: "😢",
+  joy: "😄",
+  angry: "😡",
+};
+export const EMOTE_LABEL: Record<EmoteKind, string> = {
+  laugh: "비웃음",
+  sad: "슬픔",
+  joy: "기쁨",
+  angry: "분노",
+};
+
+// 서버가 보관하는 활성 이모트 (3초 후 자동 만료).
+export interface ActiveEmote {
+  id: number;
+  playerId: string;
+  kind: EmoteKind;
+  ts: number; // 발신 epoch ms
+}
+
 export type Phase =
   | "LOBBY"
   | "SETUP"
@@ -215,6 +239,8 @@ export interface GameState {
   lastHotSector?: Sector;
   // 게임 종료 시 최종 순위(총자산 기준). ENDED 진입 시 서버에서 계산해 채운다.
   finalRankings?: RankingRow[];
+  // 활성 이모트 (3초 후 자동 만료). 브로드캐스트에 포함.
+  activeEmotes?: ActiveEmote[];
   log: GameLogEntry[];
 }
 
@@ -242,8 +268,6 @@ export type ClientMessage =
   | { type: "techUpgrade" }
   // 관리 페이즈: 연구 투자 (3단계 tier). 결과 즉시 적용
   | { type: "research"; tier: 0 | 1 | 2 }
-  // 관리 페이즈: 사업 전환(피벗). 새 섹터로 이동, 신뢰도 3 리셋
-  | { type: "pivot"; newSector: Sector }
   // 관리 페이즈: 국가에 회사 매각 (시장가의 50%, 즉시 확정)
   | { type: "sellToNation" }
   // 관리 페이즈: 특정 NPC 인수 제안 수락
@@ -256,6 +280,8 @@ export type ClientMessage =
   | { type: "repayLoan"; amount: number }
   // 게임 종료 후: 호스트가 리매치 (같은 인원으로 로비 복귀)
   | { type: "rematch" }
+  // 감정 이모트 발신 (자신 캐릭터 → 모두에게 브로드캐스트 · 3초 풍선)
+  | { type: "sendEmote"; kind: EmoteKind }
   | { type: "ready" }; // 현재 페이즈 입력 완료 신호 (TRADE 제외 조기 전환용)
 
 // 회차 내 페이즈 진행 순서 — SPEC 2장 고정. 절대 건너뛰지 않는다.

@@ -1,5 +1,5 @@
 import { BALANCE, NEWS_LIMIT, ROOM, SHARES_OUTSTANDING, infoBuyCostAt } from "./balance";
-import { ROUND_PHASES, SECTORS, SECTOR_LABELS } from "./types";
+import { EMOTE_KINDS, ROUND_PHASES, SECTORS, SECTOR_LABELS } from "./types";
 import { clampTrust, computeStocksValue, getManageContext } from "./helpers";
 import { pickHeadline } from "./logic/headlines";
 import { applyImpact, setPriceAndRecord } from "./logic/pricing";
@@ -14,6 +14,7 @@ import {
 import type {
   ClientMessage,
   Declaration,
+  EmoteKind,
   GameState,
   Phase,
   PlayerState,
@@ -134,9 +135,6 @@ export class GameRoom {
       case "research":
         this.handleResearch(id, msg.tier);
         break;
-      case "pivot":
-        this.handlePivot(id, msg.newSector);
-        break;
       case "sellToNation":
         this.handleSellToNation(id);
         break;
@@ -155,10 +153,54 @@ export class GameRoom {
       case "rematch":
         this.handleRematch(id);
         break;
+      case "sendEmote":
+        this.handleSendEmote(id, msg.kind);
+        break;
       case "ready":
         this.handleReady(id);
         break;
     }
+  }
+
+  // 이모트 스팸 방지 상태 (플레이어별 최근 발신 시각들).
+  // 3초 이내 5회 이상 발신 시 8초 쿨다운. 클라도 자체 제한하지만 서버가 최종 방어.
+  private emoteHistory: Map<string, number[]> = new Map();
+  private emoteCooldownUntil: Map<string, number> = new Map();
+  private emoteIdCounter = 1;
+
+  private handleSendEmote(id: string, kind: EmoteKind) {
+    if (!EMOTE_KINDS.includes(kind)) return;
+    // ENDED · LOBBY 는 이모트 불허 (재밌는 순간에만)
+    if (this.state.phase === "ENDED" || this.state.phase === "LOBBY") return;
+    const player = this.state.players.find((p) => p.id === id);
+    if (!player) return;
+
+    const now = Date.now();
+    const cd = this.emoteCooldownUntil.get(id) ?? 0;
+    if (now < cd) return; // 쿨다운 중 무시
+
+    const history = (this.emoteHistory.get(id) ?? []).filter((t) => now - t <= 3000);
+    if (history.length >= 5) {
+      // 3초 5회 초과 → 8초 쿨다운
+      this.emoteCooldownUntil.set(id, now + 8000);
+      this.emoteHistory.set(id, []);
+      return;
+    }
+    history.push(now);
+    this.emoteHistory.set(id, history);
+
+    // 활성 이모트 추가 + 만료된 것 정리 (5초 이상 지난 것)
+    if (!this.state.activeEmotes) this.state.activeEmotes = [];
+    this.state.activeEmotes = this.state.activeEmotes.filter(
+      (e) => now - e.ts <= 5000
+    );
+    this.state.activeEmotes.push({
+      id: this.emoteIdCounter++,
+      playerId: id,
+      kind,
+      ts: now,
+    });
+    this.broadcastSnapshot();
   }
 
   // SPEC 2장 ①: 정보 페이즈에서 돈 내고 다른 회사 정보 1건 구매.
@@ -363,27 +405,6 @@ export class GameRoom {
         : `${player.nickname} 투자 ${config.cost.toLocaleString()}원 → 주가 +${(boost * 100).toFixed(1)}%`,
       outcome === "fail" ? "neutral" : "good"
     );
-    this.broadcastSnapshot();
-  }
-
-  // SPEC 3.4 관리 페이즈: 사업 전환. 시장가액의 30% 비용, 신뢰도 3 리셋.
-  private handlePivot(id: string, newSector: Sector) {
-    const ctx = getManageContext(this.state, id);
-    if (!ctx) return;
-    const { player, co } = ctx;
-    if (!SECTORS.includes(newSector)) return;
-    if (co.sector === newSector) return; // 같은 섹터 불가
-    const marketCap = co.price * co.sharesOutstanding;
-    const cost = Math.floor(marketCap * BALANCE.pivotCostRate);
-    if (player.cash < cost) return;
-    player.cash -= cost;
-    co.sector = newSector;
-    co.trust = BALANCE.startingTrust;
-    co.lieCount = 0;
-    this.state.log.push({
-      round: this.state.round,
-      text: `🔀 ${co.name} 사업 전환 → ${newSector} (−${cost.toLocaleString()}원, 신뢰도 리셋)`,
-    });
     this.broadcastSnapshot();
   }
 
