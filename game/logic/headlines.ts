@@ -33,3 +33,45 @@ export function pickHeadline(sector: Sector, isUp: boolean): string {
   const list = HEADLINES[sector][isUp ? "up" : "down"];
   return list[Math.floor(Math.random() * list.length)];
 }
+
+// TRADE 페이즈 실시간 뉴스 헤드라인 (회사명 + 방향 + 강도별 톤).
+// 짧고 자극적이게. 강도(mag) 클수록 극적인 표현.
+const UP_MILD = [
+  "△ %s 소폭 호재",
+  "%s 잠정 계약 소식",
+  "%s 소량 매수세 유입",
+];
+const UP_STRONG = [
+  "🚀 %s 폭등",
+  "%s 대박 뉴스",
+  "%s 대규모 수주",
+  "%s 어닝 서프라이즈",
+];
+const DOWN_MILD = [
+  "▽ %s 소폭 하락",
+  "%s 소량 매도세 우세",
+  "%s 우려 확산",
+];
+const DOWN_STRONG = [
+  "💥 %s 급락",
+  "%s 사고 발생",
+  "%s 회장 스캔들",
+  "%s 대량 매도",
+];
+
+export function pickTradeEventHeadline(
+  coName: string,
+  isUp: boolean,
+  mag: number
+): string {
+  const strong = mag >= 0.05; // 5% 이상이면 강한 표현
+  const bucket = isUp
+    ? strong
+      ? UP_STRONG
+      : UP_MILD
+    : strong
+      ? DOWN_STRONG
+      : DOWN_MILD;
+  const template = bucket[Math.floor(Math.random() * bucket.length)];
+  return template.replace("%s", coName);
+}

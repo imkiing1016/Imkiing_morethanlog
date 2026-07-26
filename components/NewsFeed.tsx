@@ -60,7 +60,9 @@ export default function NewsFeed() {
         return (
           <div
             key={n.id}
-            className={`news-card rounded-card border-2 ${tone} p-3 shadow-md pointer-events-auto`}
+            className={`news-card rounded-card border-2 ${tone} p-3 shadow-md pointer-events-auto ${
+              n.flash ? "news-flash" : ""
+            }`}
           >
             <div className="flex items-baseline gap-2">
               <span className="text-lg leading-none">{n.emoji}</span>
@@ -78,6 +80,11 @@ export default function NewsFeed() {
         .news-card {
           animation: news-slide-in 320ms ease-out;
         }
+        .news-flash {
+          animation:
+            news-slide-in 320ms ease-out,
+            news-flash-pulse 700ms ease-out 320ms;
+        }
         @keyframes news-slide-in {
           from {
             transform: translateY(-16px);
@@ -86,6 +93,20 @@ export default function NewsFeed() {
           to {
             transform: translateY(0);
             opacity: 1;
+          }
+        }
+        @keyframes news-flash-pulse {
+          0% {
+            transform: scale(1);
+            box-shadow: 0 0 0 rgba(255, 200, 0, 0);
+          }
+          40% {
+            transform: scale(1.06);
+            box-shadow: 0 0 20px rgba(255, 200, 0, 0.55);
+          }
+          100% {
+            transform: scale(1);
+            box-shadow: 0 0 0 rgba(255, 200, 0, 0);
           }
         }
       `}</style>
