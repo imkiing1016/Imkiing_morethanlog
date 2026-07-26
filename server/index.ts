@@ -25,7 +25,6 @@ const SUPPORTED_MESSAGES = [
   "declare",
   "techUpgrade",
   "research",
-  "pivot",
   "sellToNation",
   "acceptExitOffer",
   "foundNewCompany",

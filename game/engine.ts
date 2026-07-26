@@ -134,9 +134,6 @@ export class GameRoom {
       case "research":
         this.handleResearch(id, msg.tier);
         break;
-      case "pivot":
-        this.handlePivot(id, msg.newSector);
-        break;
       case "sellToNation":
         this.handleSellToNation(id);
         break;
@@ -363,27 +360,6 @@ export class GameRoom {
         : `${player.nickname} 투자 ${config.cost.toLocaleString()}원 → 주가 +${(boost * 100).toFixed(1)}%`,
       outcome === "fail" ? "neutral" : "good"
     );
-    this.broadcastSnapshot();
-  }
-
-  // SPEC 3.4 관리 페이즈: 사업 전환. 시장가액의 30% 비용, 신뢰도 3 리셋.
-  private handlePivot(id: string, newSector: Sector) {
-    const ctx = getManageContext(this.state, id);
-    if (!ctx) return;
-    const { player, co } = ctx;
-    if (!SECTORS.includes(newSector)) return;
-    if (co.sector === newSector) return; // 같은 섹터 불가
-    const marketCap = co.price * co.sharesOutstanding;
-    const cost = Math.floor(marketCap * BALANCE.pivotCostRate);
-    if (player.cash < cost) return;
-    player.cash -= cost;
-    co.sector = newSector;
-    co.trust = BALANCE.startingTrust;
-    co.lieCount = 0;
-    this.state.log.push({
-      round: this.state.round,
-      text: `🔀 ${co.name} 사업 전환 → ${newSector} (−${cost.toLocaleString()}원, 신뢰도 리셋)`,
-    });
     this.broadcastSnapshot();
   }
 

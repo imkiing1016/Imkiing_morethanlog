@@ -242,8 +242,6 @@ export type ClientMessage =
   | { type: "techUpgrade" }
   // 관리 페이즈: 연구 투자 (3단계 tier). 결과 즉시 적용
   | { type: "research"; tier: 0 | 1 | 2 }
-  // 관리 페이즈: 사업 전환(피벗). 새 섹터로 이동, 신뢰도 3 리셋
-  | { type: "pivot"; newSector: Sector }
   // 관리 페이즈: 국가에 회사 매각 (시장가의 50%, 즉시 확정)
   | { type: "sellToNation" }
   // 관리 페이즈: 특정 NPC 인수 제안 수락

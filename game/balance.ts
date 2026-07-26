@@ -74,7 +74,6 @@ export const BALANCE = {
   eventMagnitudeRange: [0.15, 0.4] as const, // 강도 랜덤 범위
   tradeWindowSec: 45,
   techUpgradeCost: (lvl: number) => 1_000_000 * lvl,
-  pivotCostRate: 0.3,
   exitMinPriceRate: (t: number) => 0.8 + 0.08 * t,
   meanReversionWeight: 0.5, // 과열 섹터 역풍 가중
 
