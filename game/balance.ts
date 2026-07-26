@@ -30,6 +30,14 @@ export const BALANCE = {
   // 거래 페이즈 시장 마이크로 노이즈 — 상시 잔파도로 차트가 살아있게 한다.
   tradeNoiseIntervalMs: 1500, // 매 1.5초마다 노이즈 틱
   tradeNoiseMagnitude: 0.008, // 최대 ±0.8% 흔들림 (평균 0)
+  // TRADE 실시간 뉴스 이벤트 (마이크로 노이즈와 별개, 뉴스 팝업 + 큰 변동).
+  // 개인 정보(privateInfo)와 무관한 랜덤 이벤트. SETTLE 결과와 별개로 중간 흔들림.
+  // 창업 출자 비율에 반비례: 풀출자(1.0)면 확률·크기 최소, 무출자(0)면 최대.
+  tradeEventIntervalMs: 5000, // 5초마다 회사별로 롤
+  tradeEventBaseProb: 0.4, // 무출자 회사의 5초당 발생 확률 (풀출자면 이의 30%)
+  tradeEventProbFloor: 0.12, // 풀출자여도 최소 12% 확률 유지 (아예 안 뜨진 않게)
+  tradeEventMagRange: [0.02, 0.10] as const, // 이벤트 크기 범위 (무출자 기준)
+  tradeEventMagFloor: 0.4, // 풀출자 시 크기 감쇠 최소 계수 (=40%)
   globalEventMagnitudeRange: [0.1, 0.25] as const, // 글로벌 이벤트 강도 (SPEC 3.6)
   techGrowthPerLevel: 0.01, // 기술 레벨당 정산 시 기본 주가 상승률 (+1%/lvl, SPEC 3.3)
   manageWindowSec: 30, // 관리 페이즈 타이머 (SPEC 3.3~3.5)

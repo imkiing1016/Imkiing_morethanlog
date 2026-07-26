@@ -175,6 +175,8 @@ export interface NewsEvent {
   flavorQuote?: string;
   // 오버레이 강조용 색 톤. spotlight 전용.
   spotlightTone?: SpotlightTone;
+  // TRADE 실시간 이벤트용 — 뉴스 팝업이 잠깐 반짝이는 효과.
+  flash?: boolean;
 }
 
 // 게임 종료 시 총자산 랭킹 한 행.

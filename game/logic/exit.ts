@@ -15,6 +15,7 @@ export type PushNewsFn = (
     spotlight?: boolean;
     flavorQuote?: string;
     spotlightTone?: "celebration" | "hostile" | "somber" | "rebirth";
+    flash?: boolean;
   }
 ) => void;
 

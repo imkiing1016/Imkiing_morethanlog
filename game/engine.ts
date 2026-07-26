@@ -1,7 +1,7 @@
 import { BALANCE, NEWS_LIMIT, ROOM, SHARES_OUTSTANDING, infoBuyCostAt } from "./balance";
 import { EMOTE_KINDS, ROUND_PHASES, SECTORS, SECTOR_LABELS } from "./types";
 import { clampTrust, computeStocksValue, getManageContext } from "./helpers";
-import { pickHeadline } from "./logic/headlines";
+import { pickHeadline, pickTradeEventHeadline } from "./logic/headlines";
 import { applyImpact, setPriceAndRecord } from "./logic/pricing";
 import { executeCompanyExit, generateExitOffers, type PushNewsFn } from "./logic/exit";
 import { processBankingSettle, loanLimitFor, loanRateFor } from "./logic/bank";
@@ -829,6 +829,8 @@ export class GameRoom {
       this.tradeTimer = setTimeout(() => this.onTradeTimeout(), ms);
       // 시장 마이크로 노이즈 시작 (1B: 상시 잔파도)
       this.startMarketNoise();
+      // 실시간 뉴스 이벤트 타이머 (창업 출자 반비례 변동성)
+      this.startTradeEvents();
     } else if (phase === "MANAGE") {
       // SPEC 3.3~3.5: 30초 관리 페이즈 타이머. 종료 시 자동 다음 회차/게임 종료.
       const ms = BALANCE.manageWindowSec * 1000;
@@ -1362,6 +1364,7 @@ export class GameRoom {
       spotlight?: boolean;
       flavorQuote?: string;
       spotlightTone?: "celebration" | "hostile" | "somber" | "rebirth";
+      flash?: boolean;
     }
   ) {
     this.state.newsEvents.push({
@@ -1375,6 +1378,7 @@ export class GameRoom {
       spotlight: extras?.spotlight,
       flavorQuote: extras?.flavorQuote,
       spotlightTone: extras?.spotlightTone,
+      flash: extras?.flash,
     });
     if (this.state.newsEvents.length > NEWS_LIMIT) {
       this.state.newsEvents.splice(
@@ -1418,6 +1422,70 @@ export class GameRoom {
       clearInterval(this.noiseTimer);
       this.noiseTimer = undefined;
     }
+    this.stopTradeEvents();
+  }
+
+  // TRADE 실시간 뉴스 이벤트 타이머 (마이크로 노이즈와 별개).
+  // 매 tradeEventIntervalMs 마다 회사별로 확률 굴려 랜덤 호재/악재 이벤트 발생.
+  // 창업 출자 비율 반비례: 풀출자 회사는 확률·크기 감소, 무출자면 비트코인처럼 큼.
+  private eventTimer?: ReturnType<typeof setInterval>;
+  private startTradeEvents() {
+    this.stopTradeEvents();
+    this.eventTimer = setInterval(() => {
+      if (this.state.phase !== "TRADE") return;
+      this.rollTradeEvents();
+    }, BALANCE.tradeEventIntervalMs);
+  }
+  private stopTradeEvents() {
+    if (this.eventTimer) {
+      clearInterval(this.eventTimer);
+      this.eventTimer = undefined;
+    }
+  }
+
+  private rollTradeEvents() {
+    let anyChange = false;
+    for (const co of Object.values(this.state.companies)) {
+      // 오너의 창업 출자 비율 계산 (없거나 재창업 회사면 0으로 취급 → 최대 변동성).
+      const owner = this.state.players.find((p) => p.id === co.ownerId);
+      const seedRatio = owner
+        ? BALANCE.seedInvestedMax > 0
+          ? Math.min(1, (owner.seedInvested ?? 0) / BALANCE.seedInvestedMax)
+          : 0
+        : 0;
+
+      // 확률: base × (1 − seedRatio × 0.7). 풀출자면 base 의 30%. 최소치 floor.
+      const dampProb = 1 - seedRatio * 0.7;
+      const prob = Math.max(
+        BALANCE.tradeEventProbFloor,
+        BALANCE.tradeEventBaseProb * dampProb
+      );
+      if (Math.random() >= prob) continue;
+
+      // 방향 랜덤 (호재/악재 50:50) — privateInfo 와 무관!
+      const isUp = Math.random() < 0.5;
+      const [magLo, magHi] = BALANCE.tradeEventMagRange;
+      // 크기: 무출자 100% 반영, 풀출자면 tradeEventMagFloor(40%) 로 감쇠
+      const magDamp = 1 - seedRatio * (1 - BALANCE.tradeEventMagFloor);
+      const mag = (magLo + Math.random() * (magHi - magLo)) * magDamp;
+      const signed = isUp ? mag : -mag;
+
+      const newPrice = Math.max(1, Math.round(co.price * (1 + signed)));
+      if (newPrice === co.price) continue;
+      setPriceAndRecord(co, newPrice);
+      anyChange = true;
+
+      // 뉴스 팝업 — 짧고 강하게. 스포트라이트는 아님 (남발 방지).
+      const headline = pickTradeEventHeadline(co.name, isUp, mag);
+      this.pushNews(
+        isUp ? "📈" : "📉",
+        headline,
+        `${co.name} 실시간 ${isUp ? "+" : ""}${(signed * 100).toFixed(1)}%`,
+        isUp ? "good" : "bad",
+        { flash: true }
+      );
+    }
+    if (anyChange) this.broadcastSnapshot();
   }
 
   // --- 스냅샷 (개인화: 비공개 필드는 본인 것만) ---
