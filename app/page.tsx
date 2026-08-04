@@ -1,7 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import AvatarView from "@/components/Avatar";
+import AvatarEditor from "@/components/AvatarEditor";
+import { defaultAvatar, loadAvatar, saveAvatar } from "@/lib/avatarStorage";
+import type { Avatar } from "@/game/types";
 
 // 랜딩: 방 생성 / 코드로 입장. (SPEC M1)
 // 사람이 읽고 부르기 쉬운 6자리. 혼동되는 글자(0/O, 1/I/L) 제외.
@@ -17,6 +21,18 @@ function makeRoomCode(): string {
 export default function Home() {
   const router = useRouter();
   const [joinCode, setJoinCode] = useState("");
+  const [avatar, setAvatar] = useState<Avatar>(defaultAvatar);
+  const [showEditor, setShowEditor] = useState(false);
+
+  // 저장된 아바타 불러오기 (SSR 시 window 없음 → 마운트 후).
+  useEffect(() => {
+    setAvatar(loadAvatar());
+  }, []);
+
+  function updateAvatar(next: Avatar) {
+    setAvatar(next);
+    saveAvatar(next);
+  }
 
   function createRoom() {
     router.push(`/room/${makeRoomCode()}`);
@@ -36,6 +52,39 @@ export default function Home() {
           내가 아는 미래 정보를 진실 혹은 뻥카로 흘려 남을 끌어들이는 멀티플레이어 게임.
         </p>
       </header>
+
+      {/* 캐릭터 커스터마이징 카드 */}
+      <section className="flex flex-col gap-2">
+        <div className="flex items-baseline justify-between">
+          <p className="text-sm text-neutral">🎭 내 캐릭터</p>
+          <button
+            onClick={() => setShowEditor((v) => !v)}
+            className="text-xs rounded-element border border-cardEdge bg-card px-2 py-1"
+          >
+            {showEditor ? "접기" : "커스터마이징"}
+          </button>
+        </div>
+        {showEditor ? (
+          <AvatarEditor value={avatar} onChange={updateAvatar} />
+        ) : (
+          <button
+            onClick={() => setShowEditor(true)}
+            className="rounded-card border-2 border-cardEdge bg-card px-3 py-3 flex items-center gap-3"
+            aria-label="아바타 편집"
+          >
+            <div className="rounded-full border-2 border-cardEdge bg-paper w-14 h-14 flex items-center justify-center overflow-hidden">
+              <AvatarView avatar={avatar} size={48} />
+            </div>
+            <div className="text-left flex-1">
+              <p className="text-sm font-medium">내 캐릭터 프리뷰</p>
+              <p className="text-xs text-neutral">
+                눌러서 얼굴 · 피부색 · 표정 · 손그림 편집
+              </p>
+            </div>
+            <span className="text-neutral text-xs">›</span>
+          </button>
+        )}
+      </section>
 
       <button
         onClick={createRoom}

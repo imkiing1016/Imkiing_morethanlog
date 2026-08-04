@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import PartySocket from "partysocket";
 import { useGameStore } from "./store";
 import { useDebugLog, summarize } from "./debugLog";
+import { loadAvatar } from "./avatarStorage";
 import type { ClientMessage, ServerMessage } from "@/game/types";
 
 // 배포된 실시간 서버 호스트(Render). 환경변수가 없거나 잘못돼도 붙도록 기본값으로 둔다.
@@ -64,12 +65,15 @@ export function usePartyRoom(roomCode: string, nickname: string) {
     socket.addEventListener("open", () => {
       setStatus("connected");
       useDebugLog.getState().push({ kind: "status", text: "🟢 연결됨" });
-      const join: ClientMessage = { type: "join", nickname };
+      const savedAvatar = loadAvatar();
+      const join: ClientMessage = { type: "join", nickname, avatar: savedAvatar };
       socket.send(JSON.stringify(join));
       useDebugLog.getState().push({
         kind: "send",
         text: `→ join`,
-        detail: summarize(join),
+        detail: `nickname=${nickname} avatar=${
+          savedAvatar.drawingDataUrl ? "custom" : `f${savedAvatar.face}`
+        }`,
       });
     });
 

@@ -12,6 +12,7 @@ import {
   rollSpecialEventsOnInfo,
 } from "./logic/bigEvents";
 import type {
+  Avatar,
   ClientMessage,
   Declaration,
   EmoteKind,
@@ -21,6 +22,30 @@ import type {
   Sector,
   ServerMessage,
 } from "./types";
+import { AVATAR_EMOTIONS, AVATAR_FACE_COUNT } from "./types";
+
+// 손그림 데이터 URL 상한. 128×128 PNG 정도가 base64 로 ~30KB.
+const AVATAR_DRAWING_MAX_LEN = 40_000;
+function sanitizeAvatar(a: Avatar): Avatar {
+  const clean: Avatar = {};
+  if (typeof a.face === "number" && a.face >= 0 && a.face < AVATAR_FACE_COUNT) {
+    clean.face = Math.floor(a.face);
+  }
+  if (typeof a.skin === "string" && /^#[0-9a-fA-F]{6}$/.test(a.skin)) {
+    clean.skin = a.skin;
+  }
+  if (a.emotion && AVATAR_EMOTIONS.includes(a.emotion)) {
+    clean.emotion = a.emotion;
+  }
+  if (
+    typeof a.drawingDataUrl === "string" &&
+    a.drawingDataUrl.startsWith("data:image/") &&
+    a.drawingDataUrl.length <= AVATAR_DRAWING_MAX_LEN
+  ) {
+    clean.drawingDataUrl = a.drawingDataUrl;
+  }
+  return clean;
+}
 
 // 한 연결의 추상화. 전송 계층(ws 등)과 무관하게 게임 로직만 다룬다.
 export interface Conn {
@@ -106,7 +131,10 @@ export class GameRoom {
     }
     switch (msg.type) {
       case "join":
-        this.handleJoin(id, msg.nickname);
+        this.handleJoin(id, msg.nickname, msg.avatar);
+        break;
+      case "updateAvatar":
+        this.handleUpdateAvatar(id, msg.avatar);
         break;
       case "start":
         this.handleStart(id);
@@ -167,6 +195,14 @@ export class GameRoom {
   private emoteHistory: Map<string, number[]> = new Map();
   private emoteCooldownUntil: Map<string, number> = new Map();
   private emoteIdCounter = 1;
+
+  // 로비/게임 중 아바타 재편집. 6명 × ~30KB(손그림) 이내 크기만 허용.
+  private handleUpdateAvatar(id: string, avatar: Avatar) {
+    const player = this.state.players.find((p) => p.id === id);
+    if (!player) return;
+    player.avatar = sanitizeAvatar(avatar);
+    this.broadcastSnapshot();
+  }
 
   private handleSendEmote(id: string, kind: EmoteKind) {
     if (!EMOTE_KINDS.includes(kind)) return;
@@ -629,11 +665,12 @@ export class GameRoom {
 
   // --- 입력 처리 ---
 
-  private handleJoin(id: string, nickname: string) {
+  private handleJoin(id: string, nickname: string, avatar?: Avatar) {
     const existing = this.state.players.find((p) => p.id === id);
     if (existing) {
       existing.nickname = nickname.trim().slice(0, 16) || existing.nickname;
       existing.connected = true;
+      if (avatar) existing.avatar = sanitizeAvatar(avatar);
       this.broadcastSnapshot();
       return;
     }
@@ -645,6 +682,7 @@ export class GameRoom {
     const player: PlayerState = {
       id,
       nickname: nickname.trim().slice(0, 16) || "player",
+      avatar: avatar ? sanitizeAvatar(avatar) : undefined,
       cash: 0,
       holdings: {},
       ready: false,

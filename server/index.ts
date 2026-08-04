@@ -32,6 +32,7 @@ const SUPPORTED_MESSAGES = [
   "repayLoan",
   "rematch",
   "sendEmote",
+  "updateAvatar",
   "ready",
 ];
 const STARTED_AT = new Date().toISOString();
