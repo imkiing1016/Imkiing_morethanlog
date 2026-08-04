@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useGameStore } from "@/lib/store";
 import { ROOM } from "@/game/balance";
-import type { ClientMessage } from "@/game/types";
+import type { Avatar as AvatarData, ClientMessage } from "@/game/types";
+import Avatar from "./Avatar";
+import AvatarEditor from "./AvatarEditor";
+import { defaultAvatar, loadAvatar, saveAvatar } from "@/lib/avatarStorage";
 
 // 로비: 플레이어 목록 / 링크 공유 / 호스트 시작. (SPEC M1)
 // 소켓 연결은 상위 Room 이 유지하고, send 만 내려받는다.
@@ -18,6 +21,16 @@ export default function Lobby({
   const state = useGameStore((s) => s.state);
   const selfId = useGameStore((s) => s.selfId);
   const [copied, setCopied] = useState(false);
+  const [avatarOpen, setAvatarOpen] = useState(false);
+  const [avatar, setAvatar] = useState<AvatarData>(defaultAvatar);
+  useEffect(() => {
+    setAvatar(loadAvatar());
+  }, []);
+  function updateAvatar(next: AvatarData) {
+    setAvatar(next);
+    saveAvatar(next);
+    send({ type: "updateAvatar", avatar: next });
+  }
 
   const statusLabel: Record<typeof status, string> = {
     connecting: "연결 중…",
@@ -81,10 +94,19 @@ export default function Lobby({
           {state.players.map((p) => (
             <li
               key={p.id}
-              className="flex items-center justify-between rounded-element border border-neutral/20 px-3 py-3"
+              className="flex items-center gap-3 rounded-element border border-neutral/20 px-3 py-3"
             >
-              <span className="font-medium">
-                {p.isBot && "🤖 "}
+              <span
+                className="rounded-full border-2 border-cardEdge bg-paper overflow-hidden flex items-center justify-center shrink-0"
+                style={{ width: 36, height: 36 }}
+              >
+                {p.avatar ? (
+                  <Avatar avatar={p.avatar} size={32} />
+                ) : (
+                  <span className="text-xl">{p.isBot ? "🤖" : "👤"}</span>
+                )}
+              </span>
+              <span className="font-medium flex-1">
                 {p.nickname}
                 {p.id === selfId && (
                   <span className="ml-2 text-sm text-neutral">(나)</span>
@@ -97,6 +119,22 @@ export default function Lobby({
             </li>
           ))}
         </ul>
+      </section>
+
+      {/* 아바타 편집 (로비에서도 재편집 가능 → 실시간 브로드캐스트) */}
+      <section className="flex flex-col gap-2">
+        <div className="flex items-baseline justify-between">
+          <p className="text-sm text-neutral">🎭 내 캐릭터</p>
+          <button
+            onClick={() => setAvatarOpen((v) => !v)}
+            className="text-xs rounded-element border border-cardEdge bg-card px-2 py-1"
+          >
+            {avatarOpen ? "접기" : "편집"}
+          </button>
+        </div>
+        {avatarOpen && (
+          <AvatarEditor value={avatar} onChange={updateAvatar} />
+        )}
       </section>
 
       {isHost ? (

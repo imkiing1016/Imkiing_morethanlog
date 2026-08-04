@@ -40,6 +40,45 @@ export const SECTOR_MASCOTS: Record<Sector, string> = {
   DEFENSE: "🛡️", // 방패
 };
 
+// 캐릭터 아바타 — 시작 화면에서 커스터마이징.
+// preset 6 얼굴 × 6 피부색 × 5 표정 조합 or 손그림 데이터 URL(PNG).
+// drawingDataUrl 이 있으면 preset 무시하고 그림 그대로 렌더.
+export interface Avatar {
+  face?: number;   // 0..5 얼굴 형태 인덱스
+  skin?: string;   // hex 피부색
+  emotion?: AvatarEmotion;
+  drawingDataUrl?: string; // base64 PNG (grafiti pad 로 그린 것)
+}
+export type AvatarEmotion =
+  | "neutral"
+  | "smile"
+  | "tear"
+  | "angry"
+  | "surprised";
+export const AVATAR_EMOTIONS: AvatarEmotion[] = [
+  "neutral",
+  "smile",
+  "tear",
+  "angry",
+  "surprised",
+];
+export const AVATAR_EMOTION_LABEL: Record<AvatarEmotion, string> = {
+  neutral: "무표정",
+  smile: "웃음",
+  tear: "눈물",
+  angry: "화남",
+  surprised: "놀람",
+};
+export const AVATAR_SKIN_TONES: string[] = [
+  "#FCD9B8", // pale peach
+  "#F1B48C", // light tan
+  "#D48A5E", // caramel
+  "#A2603A", // sienna
+  "#5A3624", // deep brown
+  "#B8DBFF", // fantasy blue
+];
+export const AVATAR_FACE_COUNT = 6;
+
 // 감정 이모트 종류 (플레이어 카드 위로 풍선처럼 떠오름).
 export type EmoteKind = "laugh" | "sad" | "joy" | "angry";
 export const EMOTE_KINDS: EmoteKind[] = ["laugh", "sad", "joy", "angry"];
@@ -105,6 +144,8 @@ export interface Company {
 export interface PlayerState {
   id: string;
   nickname: string;
+  // 공개: 시작 화면에서 커스터마이징한 아바타 (얼굴/피부/표정 또는 손그림).
+  avatar?: Avatar;
   cash: number;
   holdings: Record<string /*companyOwnerId*/, number /*shares*/>;
   // 비공개(본인만): 이번 회차 내 섹터의 다음 이벤트 방향
@@ -272,7 +313,9 @@ export interface GameState {
 // 클라는 입력만 보낸다. 서버가 상태를 계산해 스냅샷을 브로드캐스트한다.
 
 export type ClientMessage =
-  | { type: "join"; nickname: string }
+  | { type: "join"; nickname: string; avatar?: Avatar }
+  // 로비/게임 중 아바타 재편집 → 브로드캐스트.
+  | { type: "updateAvatar"; avatar: Avatar }
   | { type: "start" } // 호스트만: LOBBY → SETUP(사업 설립)
   | { type: "addBot" } // 호스트만, 로비에서 테스트용 봇 추가 (SPEC 1.0.5)
   // 사업 설립: 카테고리 + 회사명 + 창업 출자(0 ~ BALANCE.seedInvestedMax)

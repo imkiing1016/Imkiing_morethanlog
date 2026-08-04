@@ -10,6 +10,7 @@ import type {
   GameState,
 } from "@/game/types";
 import SectorIcon from "./SectorIcon";
+import Avatar from "./Avatar";
 import EmoteBalloon from "./EmoteBalloon";
 
 // 하단 플레이어 Dock — 최대 6칸 (실제 참여자 뒤엔 빈 슬롯 회색 비활성).
@@ -152,9 +153,14 @@ export default function PlayerDock({
               >
                 {/* 이모트 풍선 */}
                 {activeEmote && <EmoteBalloon emote={activeEmote} />}
-                {/* 섹터 아이콘 or 봇 이모지 */}
+                {/* 아바타(우선) → 없으면 섹터/투자자/기본 이모지 */}
                 <div className="relative">
-                  {co ? (
+                  {p.avatar &&
+                  (p.avatar.drawingDataUrl ||
+                    p.avatar.face !== undefined ||
+                    p.avatar.emotion !== undefined) ? (
+                    <Avatar avatar={p.avatar} size={30} />
+                  ) : co ? (
                     <SectorIcon sector={co.sector} size={28} />
                   ) : p.isInvestor ? (
                     <span className="text-2xl">💼</span>
