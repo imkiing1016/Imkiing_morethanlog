@@ -17,7 +17,7 @@ interface Props {
 }
 
 const DEFAULT_BG = "#FFF6E0";
-const SHEET_URL = "/animals/sheet.png";
+const SHEET_URL = "/animals/sheet.webp";
 const SHEET_COLS = 5;
 const SHEET_ROWS = 4;
 

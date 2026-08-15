@@ -1,6 +1,6 @@
 # 동물 캐릭터 스프라이트 시트
 
-**경로**: `public/animals/sheet.png`
+**경로**: `public/animals/sheet.webp`
 
 ## 규격
 
@@ -27,13 +27,13 @@
 ### GitHub 웹 UI
 1. https://github.com/imkiing1016/Imkiing_morethanlog/tree/main/public/animals 접속
 2. **Add file → Upload files**
-3. 파일명 `sheet.png` 로 저장
+3. 파일명 `sheet.webp` 로 저장
 4. 커밋 → Vercel 자동 재배포
 
 ### 로컬
 ```bash
-cp <내려받은.png> public/animals/sheet.png
-git add public/animals/sheet.png
+cp <내려받은.png> public/animals/sheet.webp
+git add public/animals/sheet.webp
 git commit -m "art: 동물 20종 스프라이트 시트 추가"
 git push
 ```
