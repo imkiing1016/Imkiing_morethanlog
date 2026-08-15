@@ -22,20 +22,24 @@ import type {
   Sector,
   ServerMessage,
 } from "./types";
-import { AVATAR_EMOTIONS, AVATAR_FACE_COUNT } from "./types";
+import { ANIMAL_LIST, AVATAR_BG_COLORS, ORNAMENT_LIST } from "./types";
 
 // 손그림 데이터 URL 상한. 128×128 PNG 정도가 base64 로 ~30KB.
 const AVATAR_DRAWING_MAX_LEN = 40_000;
+const ANIMAL_IDS = new Set(ANIMAL_LIST.map((a) => a.id));
+const ORNAMENT_IDS = new Set(ORNAMENT_LIST.map((o) => o.id));
+const BG_HEXES = new Set(AVATAR_BG_COLORS.map((b) => b.hex));
+
 function sanitizeAvatar(a: Avatar): Avatar {
   const clean: Avatar = {};
-  if (typeof a.face === "number" && a.face >= 0 && a.face < AVATAR_FACE_COUNT) {
-    clean.face = Math.floor(a.face);
+  if (typeof a.animalId === "string" && ANIMAL_IDS.has(a.animalId)) {
+    clean.animalId = a.animalId;
   }
-  if (typeof a.skin === "string" && /^#[0-9a-fA-F]{6}$/.test(a.skin)) {
-    clean.skin = a.skin;
+  if (typeof a.ornamentId === "string" && ORNAMENT_IDS.has(a.ornamentId)) {
+    clean.ornamentId = a.ornamentId;
   }
-  if (a.emotion && AVATAR_EMOTIONS.includes(a.emotion)) {
-    clean.emotion = a.emotion;
+  if (typeof a.bgColor === "string" && BG_HEXES.has(a.bgColor)) {
+    clean.bgColor = a.bgColor;
   }
   if (
     typeof a.drawingDataUrl === "string" &&

@@ -1,19 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import type { Avatar as AvatarData, AvatarEmotion } from "@/game/types";
+import type { Avatar as AvatarData } from "@/game/types";
 import {
-  AVATAR_EMOTIONS,
-  AVATAR_EMOTION_LABEL,
-  AVATAR_FACE_COUNT,
-  AVATAR_SKIN_TONES,
+  ANIMAL_LIST,
+  AVATAR_BG_COLORS,
+  ORNAMENT_LIST,
 } from "@/game/types";
 import Avatar from "./Avatar";
 import DrawPad from "./DrawPad";
 
-// 아바타 편집기: 4탭 (얼굴/피부/표정/그리기) + 큰 프리뷰.
-// 변경 즉시 onChange 호출. 손그림은 pad 에서 "사용" 눌러야 반영.
-type Tab = "face" | "skin" | "emotion" | "draw";
+// 아바타 편집기: 3탭 (동물/꾸미기/그리기) + 큰 프리뷰.
+// - 동물: 20종 프리셋 중 선택
+// - 꾸미기: 우측 상단 장식 뱃지 + 원형 배경색
+// - 그리기: 자유 손그림 (있으면 프리셋 무시하고 우선 렌더)
+// 프리셋 편집 시 손그림 자동 해제. "프리셋으로 되돌리기" 로 언제든 복귀.
+type Tab = "animal" | "decor" | "draw";
 
 interface Props {
   value: AvatarData;
@@ -22,29 +24,35 @@ interface Props {
 }
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
-  { key: "face", label: "얼굴", icon: "👤" },
-  { key: "skin", label: "피부색", icon: "🎨" },
-  { key: "emotion", label: "표정", icon: "😊" },
+  { key: "animal", label: "동물", icon: "🐰" },
+  { key: "decor", label: "꾸미기", icon: "✨" },
   { key: "draw", label: "그리기", icon: "✏️" },
 ];
+
+const ANIMAL_MAP = new Map(ANIMAL_LIST.map((a) => [a.id, a]));
+const ORNAMENT_MAP = new Map(ORNAMENT_LIST.map((o) => [o.id, o]));
 
 export default function AvatarEditor({
   value,
   onChange,
   previewSize = 96,
 }: Props) {
-  const [tab, setTab] = useState<Tab>("face");
+  const [tab, setTab] = useState<Tab>("animal");
   const hasDrawing = !!value.drawingDataUrl;
+  const animal = value.animalId ? ANIMAL_MAP.get(value.animalId) : undefined;
+  const ornament = value.ornamentId
+    ? ORNAMENT_MAP.get(value.ornamentId)
+    : undefined;
 
+  // 프리셋 편집 시 손그림은 자동 해제.
   function patch(next: Partial<AvatarData>) {
-    // 얼굴/피부/표정 편집 시 손그림 자동 해제 (겹치지 않게).
-    const cleared: AvatarData = {
-      face: value.face,
-      skin: value.skin,
-      emotion: value.emotion,
+    onChange({
+      animalId: value.animalId,
+      ornamentId: value.ornamentId,
+      bgColor: value.bgColor,
       ...next,
-    };
-    onChange(cleared);
+      drawingDataUrl: undefined,
+    });
   }
 
   return (
@@ -52,26 +60,34 @@ export default function AvatarEditor({
       {/* 프리뷰 */}
       <div className="flex items-center gap-3">
         <div
-          className="rounded-full border-2 border-cardEdge bg-paper flex items-center justify-center overflow-hidden"
+          className="flex items-center justify-center"
           style={{ width: previewSize, height: previewSize, flexShrink: 0 }}
         >
-          <Avatar avatar={value} size={previewSize - 8} />
+          <Avatar
+            avatar={value}
+            size={previewSize}
+            fallback={
+              <span className="text-neutral text-3xl">👤</span>
+            }
+          />
         </div>
-        <div className="text-xs text-neutral">
+        <div className="text-xs text-neutral flex-1 min-w-0">
           <p className="text-sm font-medium text-ink">내 캐릭터</p>
-          <p>
+          <p className="truncate">
             {hasDrawing
               ? "✏️ 손그림 사용중"
-              : `얼굴 ${(value.face ?? 0) + 1} · ${AVATAR_EMOTION_LABEL[value.emotion ?? "neutral"]}`}
+              : animal
+                ? `${animal.emoji} ${animal.label}${ornament && ornament.emoji ? ` · ${ornament.label}` : ""}`
+                : "동물을 골라주세요"}
           </p>
           {hasDrawing && (
             <button
               type="button"
               onClick={() =>
                 onChange({
-                  face: value.face,
-                  skin: value.skin,
-                  emotion: value.emotion,
+                  animalId: value.animalId,
+                  ornamentId: value.ornamentId,
+                  bgColor: value.bgColor,
                   drawingDataUrl: undefined,
                 })
               }
@@ -103,81 +119,93 @@ export default function AvatarEditor({
       </div>
 
       {/* 탭 컨텐츠 */}
-      {tab === "face" && (
-        <div className="grid grid-cols-3 gap-2">
-          {Array.from({ length: AVATAR_FACE_COUNT }).map((_, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => patch({ face: i })}
-              className={`rounded-element border-2 p-2 flex items-center justify-center ${
-                (value.face ?? 0) === i && !hasDrawing
-                  ? "border-warning bg-accentSoft"
-                  : "border-cardEdge bg-paper"
-              }`}
-              aria-label={`얼굴 ${i + 1}`}
-            >
-              <Avatar
-                avatar={{
-                  face: i,
-                  skin: value.skin,
-                  emotion: value.emotion,
-                }}
-                size={44}
-              />
-            </button>
-          ))}
-        </div>
-      )}
-
-      {tab === "skin" && (
-        <div className="flex flex-col gap-2">
-          <div className="grid grid-cols-6 gap-2">
-            {AVATAR_SKIN_TONES.map((tone) => (
-              <button
-                key={tone}
-                type="button"
-                onClick={() => patch({ skin: tone })}
-                aria-label={`피부색 ${tone}`}
-                style={{ backgroundColor: tone }}
-                className={`w-full aspect-square rounded-full border-2 ${
-                  value.skin === tone
-                    ? "border-warning ring-2 ring-warning"
-                    : "border-cardEdge"
-                }`}
-              />
-            ))}
-          </div>
-          <p className="text-[10px] text-neutral text-center">
-            프리셋 6종 · 자기 개성에 맞게
-          </p>
-        </div>
-      )}
-
-      {tab === "emotion" && (
+      {tab === "animal" && (
         <div className="grid grid-cols-5 gap-2">
-          {AVATAR_EMOTIONS.map((em) => (
-            <button
-              key={em}
-              type="button"
-              onClick={() => patch({ emotion: em })}
-              className={`rounded-element border-2 p-1 flex flex-col items-center gap-1 ${
-                (value.emotion ?? "neutral") === em && !hasDrawing
-                  ? "border-warning bg-accentSoft"
-                  : "border-cardEdge bg-paper"
-              }`}
-            >
-              <Avatar
-                avatar={{
-                  face: value.face,
-                  skin: value.skin,
-                  emotion: em,
-                }}
-                size={36}
-              />
-              <span className="text-[10px]">{AVATAR_EMOTION_LABEL[em]}</span>
-            </button>
-          ))}
+          {ANIMAL_LIST.map((a) => {
+            const picked = value.animalId === a.id && !hasDrawing;
+            return (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => patch({ animalId: a.id })}
+                className={`rounded-element border-2 p-1.5 flex flex-col items-center gap-0.5 ${
+                  picked
+                    ? "border-warning bg-accentSoft"
+                    : "border-cardEdge bg-paper"
+                }`}
+                aria-label={a.label}
+                title={a.label}
+              >
+                <Avatar
+                  avatar={{
+                    animalId: a.id,
+                    bgColor: value.bgColor,
+                  }}
+                  size={40}
+                />
+                <span className="text-[9px] text-neutral leading-tight truncate max-w-full">
+                  {a.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {tab === "decor" && (
+        <div className="flex flex-col gap-3">
+          {/* 장식 */}
+          <div>
+            <p className="text-xs text-neutral mb-1.5">✨ 장식 (우측 상단 뱃지)</p>
+            <div className="grid grid-cols-6 gap-2">
+              {ORNAMENT_LIST.map((o) => {
+                const picked =
+                  (value.ornamentId ?? "none") === o.id && !hasDrawing;
+                return (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => patch({ ornamentId: o.id })}
+                    className={`rounded-element border-2 aspect-square flex flex-col items-center justify-center ${
+                      picked
+                        ? "border-warning bg-accentSoft"
+                        : "border-cardEdge bg-paper"
+                    }`}
+                    aria-label={o.label}
+                    title={o.label}
+                  >
+                    <span className="text-xl leading-none">
+                      {o.emoji || "∅"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {/* 배경색 */}
+          <div>
+            <p className="text-xs text-neutral mb-1.5">🎨 원형 배경색</p>
+            <div className="grid grid-cols-6 gap-2">
+              {AVATAR_BG_COLORS.map((bg) => {
+                const picked = value.bgColor === bg.hex && !hasDrawing;
+                return (
+                  <button
+                    key={bg.id}
+                    type="button"
+                    onClick={() => patch({ bgColor: bg.hex })}
+                    aria-label={`배경 ${bg.label}`}
+                    title={bg.label}
+                    style={{ backgroundColor: bg.hex }}
+                    className={`w-full aspect-square rounded-full border-2 ${
+                      picked
+                        ? "border-warning ring-2 ring-warning"
+                        : "border-cardEdge"
+                    }`}
+                  />
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 
@@ -186,9 +214,9 @@ export default function AvatarEditor({
           initial={value.drawingDataUrl}
           onCommit={(dataUrl) =>
             onChange({
-              face: value.face,
-              skin: value.skin,
-              emotion: value.emotion,
+              animalId: value.animalId,
+              ornamentId: value.ornamentId,
+              bgColor: value.bgColor,
               drawingDataUrl: dataUrl,
             })
           }

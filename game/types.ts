@@ -40,44 +40,64 @@ export const SECTOR_MASCOTS: Record<Sector, string> = {
   DEFENSE: "🛡️", // 방패
 };
 
-// 캐릭터 아바타 — 시작 화면에서 커스터마이징.
-// preset 6 얼굴 × 6 피부색 × 5 표정 조합 or 손그림 데이터 URL(PNG).
-// drawingDataUrl 이 있으면 preset 무시하고 그림 그대로 렌더.
+// 캐릭터 아바타 — 20종 동물 중 하나 + 장식(선택) + 배경색(선택).
+// drawingDataUrl 이 있으면 프리셋 무시하고 손그림 그대로 렌더.
 export interface Avatar {
-  face?: number;   // 0..5 얼굴 형태 인덱스
-  skin?: string;   // hex 피부색
-  emotion?: AvatarEmotion;
-  drawingDataUrl?: string; // base64 PNG (grafiti pad 로 그린 것)
+  animalId?: string;    // ANIMAL_LIST 의 id ("fox", "rabbit"…)
+  ornamentId?: string;  // ORNAMENT_LIST 의 id ("leaf", "star"…)
+  bgColor?: string;     // 원형 배경색 hex
+  drawingDataUrl?: string; // base64 PNG (그리기 탭 결과)
 }
-export type AvatarEmotion =
-  | "neutral"
-  | "smile"
-  | "tear"
-  | "angry"
-  | "surprised";
-export const AVATAR_EMOTIONS: AvatarEmotion[] = [
-  "neutral",
-  "smile",
-  "tear",
-  "angry",
-  "surprised",
+
+// 20종 동물 프리셋 — 참고 이미지의 라인아트 셋을 이모지로 이식.
+export const ANIMAL_LIST: { id: string; emoji: string; label: string }[] = [
+  { id: "ghost",    emoji: "👻", label: "유령"   },
+  { id: "fox",      emoji: "🦊", label: "여우"   },
+  { id: "rabbit",   emoji: "🐰", label: "토끼"   },
+  { id: "owl",      emoji: "🦉", label: "부엉이" },
+  { id: "bear",     emoji: "🐻", label: "곰"    },
+  { id: "tiger",    emoji: "🐯", label: "호랑이" },
+  { id: "penguin",  emoji: "🐧", label: "펭귄"   },
+  { id: "koala",    emoji: "🐨", label: "코알라" },
+  { id: "panda",    emoji: "🐼", label: "판다"   },
+  { id: "lion",     emoji: "🦁", label: "사자"   },
+  { id: "cat",      emoji: "🐱", label: "고양이" },
+  { id: "dog",      emoji: "🐶", label: "강아지" },
+  { id: "elephant", emoji: "🐘", label: "코끼리" },
+  { id: "giraffe",  emoji: "🦒", label: "기린"   },
+  { id: "hedgehog", emoji: "🦔", label: "고슴도치"},
+  { id: "frog",     emoji: "🐸", label: "개구리" },
+  { id: "horse",    emoji: "🐴", label: "말"    },
+  { id: "mouse",    emoji: "🐭", label: "쥐"    },
+  { id: "monkey",   emoji: "🐵", label: "원숭이" },
+  { id: "alien",    emoji: "👽", label: "외계인" },
 ];
-export const AVATAR_EMOTION_LABEL: Record<AvatarEmotion, string> = {
-  neutral: "무표정",
-  smile: "웃음",
-  tear: "눈물",
-  angry: "화남",
-  surprised: "놀람",
-};
-export const AVATAR_SKIN_TONES: string[] = [
-  "#FCD9B8", // pale peach
-  "#F1B48C", // light tan
-  "#D48A5E", // caramel
-  "#A2603A", // sienna
-  "#5A3624", // deep brown
-  "#B8DBFF", // fantasy blue
+
+// 장식 프리셋 (아바타 우측 상단에 붙는 작은 뱃지).
+export const ORNAMENT_LIST: { id: string; emoji: string; label: string }[] = [
+  { id: "none",      emoji: "",   label: "없음"    },
+  { id: "leaf",      emoji: "🍃", label: "잎"     },
+  { id: "star",      emoji: "⭐", label: "별"     },
+  { id: "moon",      emoji: "🌙", label: "달"     },
+  { id: "sun",       emoji: "☀️", label: "해"     },
+  { id: "snowflake", emoji: "❄️", label: "눈송이"  },
+  { id: "flower",    emoji: "🌸", label: "꽃"     },
+  { id: "heart",     emoji: "❤️", label: "하트"   },
+  { id: "sparkle",   emoji: "✨", label: "반짝임" },
+  { id: "fire",      emoji: "🔥", label: "불꽃"   },
+  { id: "ribbon",    emoji: "🎀", label: "리본"   },
+  { id: "crown",     emoji: "👑", label: "왕관"   },
 ];
-export const AVATAR_FACE_COUNT = 6;
+
+// 원형 배경색 프리셋 (부드러운 파스텔).
+export const AVATAR_BG_COLORS: { id: string; hex: string; label: string }[] = [
+  { id: "cream",  hex: "#FFF6E0", label: "크림"   },
+  { id: "peach",  hex: "#FFE0D0", label: "복숭아" },
+  { id: "sky",    hex: "#DCEEFF", label: "하늘"   },
+  { id: "mint",   hex: "#DCF5E0", label: "민트"   },
+  { id: "lilac",  hex: "#E8DCFF", label: "라일락" },
+  { id: "sand",   hex: "#F0E0B0", label: "모래"   },
+];
 
 // 감정 이모트 종류 (플레이어 카드 위로 풍선처럼 떠오름).
 export type EmoteKind = "laugh" | "sad" | "joy" | "angry";
