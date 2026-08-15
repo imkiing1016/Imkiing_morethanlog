@@ -1,9 +1,10 @@
 "use client";
 
-import type { Avatar as AvatarData, AvatarEmotion } from "@/game/types";
+import type { Avatar as AvatarData } from "@/game/types";
+import { ANIMAL_LIST, AVATAR_BG_COLORS, ORNAMENT_LIST } from "@/game/types";
 
-// 아바타 SVG 렌더러 — 프리셋(얼굴/피부/표정) 또는 손그림(base64 PNG) 표시.
-// size 는 렌더 픽셀 크기. 부모에서 원하는 크기로 지정.
+// 아바타 렌더러 — 20종 동물 프리셋 + 장식 + 배경색 or 손그림.
+// 손그림이 있으면 우선. 아니면 원형 배경 + 동물 이모지 + 장식 뱃지.
 interface Props {
   avatar?: AvatarData;
   size?: number;
@@ -11,7 +12,9 @@ interface Props {
   fallback?: React.ReactNode;
 }
 
-const DEFAULT_SKIN = "#FCD9B8";
+const DEFAULT_BG = "#FFF6E0";
+const ANIMAL_MAP = new Map(ANIMAL_LIST.map((a) => [a.id, a]));
+const ORNAMENT_MAP = new Map(ORNAMENT_LIST.map((o) => [o.id, o]));
 
 export default function Avatar({
   avatar,
@@ -31,238 +34,74 @@ export default function Avatar({
         style={{
           width: size,
           height: size,
-          borderRadius: 8,
+          borderRadius: "50%",
           objectFit: "cover",
-          imageRendering: "auto",
+          border: "1.5px solid #3B2513",
+          background: "#fff",
         }}
       />
     );
   }
-  // 프리셋 아바타가 하나라도 지정되면 SVG 렌더
-  if (
-    avatar &&
-    (avatar.face !== undefined ||
-      avatar.skin !== undefined ||
-      avatar.emotion !== undefined)
-  ) {
-    return (
-      <PresetAvatarSvg
-        face={avatar.face ?? 0}
-        skin={avatar.skin ?? DEFAULT_SKIN}
-        emotion={avatar.emotion ?? "neutral"}
-        size={size}
-        className={className}
-      />
-    );
+
+  const animal = avatar?.animalId
+    ? ANIMAL_MAP.get(avatar.animalId)
+    : undefined;
+  const ornament = avatar?.ornamentId
+    ? ORNAMENT_MAP.get(avatar.ornamentId)
+    : undefined;
+  const bg = avatar?.bgColor ?? DEFAULT_BG;
+
+  if (!animal) {
+    return <>{fallback ?? null}</>;
   }
-  // 아무 것도 없음 → fallback
-  return <>{fallback ?? null}</>;
-}
 
-// 얼굴 형태 6종 (헤드 SVG path).
-// viewBox 100×100 기준. 중앙 정렬.
-function FaceShape({ face, fill }: { face: number; fill: string }) {
-  const stroke = "#3B2513";
-  const sw = 2.5;
-  switch (face % 6) {
-    case 0: // 계란형
-      return (
-        <ellipse cx="50" cy="52" rx="30" ry="36" fill={fill} stroke={stroke} strokeWidth={sw} />
-      );
-    case 1: // 원형
-      return (
-        <circle cx="50" cy="52" r="34" fill={fill} stroke={stroke} strokeWidth={sw} />
-      );
-    case 2: // 사각(둥근)
-      return (
-        <rect
-          x="18"
-          y="18"
-          width="64"
-          height="66"
-          rx="18"
-          fill={fill}
-          stroke={stroke}
-          strokeWidth={sw}
-        />
-      );
-    case 3: // 볼통볼통 (넓은 얼굴)
-      return (
-        <path
-          d="M50 12 C74 12 82 34 82 52 C82 78 66 88 50 88 C34 88 18 78 18 52 C18 34 26 12 50 12 Z"
-          fill={fill}
-          stroke={stroke}
-          strokeWidth={sw}
-        />
-      );
-    case 4: // 뾰족한 턱
-      return (
-        <path
-          d="M50 14 C72 14 80 32 80 48 C80 66 66 92 50 92 C34 92 20 66 20 48 C20 32 28 14 50 14 Z"
-          fill={fill}
-          stroke={stroke}
-          strokeWidth={sw}
-        />
-      );
-    case 5: // 세로 긴 계란
-      return (
-        <ellipse cx="50" cy="50" rx="26" ry="40" fill={fill} stroke={stroke} strokeWidth={sw} />
-      );
-    default:
-      return null;
-  }
-}
+  // 이모지 크기 = 원형 지름의 65%
+  const emojiSize = Math.max(12, Math.round(size * 0.62));
+  // 장식 = 지름의 32%, 우측 상단
+  const ornSize = Math.max(8, Math.round(size * 0.32));
 
-// 감정별 눈/입 오버레이.
-function Emotion({ emotion }: { emotion: AvatarEmotion }) {
-  const stroke = "#1A1108";
-  const sw = 2.5;
-  const eyes: Record<AvatarEmotion, React.ReactNode> = {
-    neutral: (
-      <>
-        <circle cx="38" cy="46" r="3" fill={stroke} />
-        <circle cx="62" cy="46" r="3" fill={stroke} />
-      </>
-    ),
-    smile: (
-      <>
-        <path
-          d="M33 48 Q38 42 43 48"
-          fill="none"
-          stroke={stroke}
-          strokeWidth={sw}
-          strokeLinecap="round"
-        />
-        <path
-          d="M57 48 Q62 42 67 48"
-          fill="none"
-          stroke={stroke}
-          strokeWidth={sw}
-          strokeLinecap="round"
-        />
-      </>
-    ),
-    tear: (
-      <>
-        <path
-          d="M33 44 L43 48 M57 48 L67 44"
-          fill="none"
-          stroke={stroke}
-          strokeWidth={sw}
-          strokeLinecap="round"
-        />
-        <path
-          d="M40 52 Q37 62 40 66 Q43 62 40 52 Z"
-          fill="#6BC0F5"
-          stroke={stroke}
-          strokeWidth={1.5}
-        />
-      </>
-    ),
-    angry: (
-      <>
-        <path
-          d="M33 42 L43 46 M57 46 L67 42"
-          fill="none"
-          stroke={stroke}
-          strokeWidth={sw + 1}
-          strokeLinecap="round"
-        />
-        <circle cx="38" cy="50" r="3" fill={stroke} />
-        <circle cx="62" cy="50" r="3" fill={stroke} />
-      </>
-    ),
-    surprised: (
-      <>
-        <circle cx="38" cy="46" r="5" fill="white" stroke={stroke} strokeWidth={1.5} />
-        <circle cx="62" cy="46" r="5" fill="white" stroke={stroke} strokeWidth={1.5} />
-        <circle cx="38" cy="46" r="2" fill={stroke} />
-        <circle cx="62" cy="46" r="2" fill={stroke} />
-      </>
-    ),
-  };
-  const mouth: Record<AvatarEmotion, React.ReactNode> = {
-    neutral: (
-      <path
-        d="M40 68 L60 68"
-        fill="none"
-        stroke={stroke}
-        strokeWidth={sw}
-        strokeLinecap="round"
-      />
-    ),
-    smile: (
-      <path
-        d="M36 64 Q50 78 64 64"
-        fill="none"
-        stroke={stroke}
-        strokeWidth={sw + 0.5}
-        strokeLinecap="round"
-      />
-    ),
-    tear: (
-      <path
-        d="M40 72 Q50 64 60 72"
-        fill="none"
-        stroke={stroke}
-        strokeWidth={sw}
-        strokeLinecap="round"
-      />
-    ),
-    angry: (
-      <path
-        d="M38 68 L44 66 L50 70 L56 66 L62 68"
-        fill="none"
-        stroke={stroke}
-        strokeWidth={sw}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    ),
-    surprised: (
-      <ellipse
-        cx="50"
-        cy="70"
-        rx="5"
-        ry="7"
-        fill="#1A1108"
-        stroke={stroke}
-        strokeWidth={1.5}
-      />
-    ),
-  };
   return (
-    <>
-      {eyes[emotion]}
-      {mouth[emotion]}
-    </>
-  );
-}
-
-function PresetAvatarSvg({
-  face,
-  skin,
-  emotion,
-  size,
-  className,
-}: {
-  face: number;
-  skin: string;
-  emotion: AvatarEmotion;
-  size: number;
-  className?: string;
-}) {
-  return (
-    <svg
-      viewBox="0 0 100 100"
-      width={size}
-      height={size}
+    <span
       className={className}
-      style={{ display: "block" }}
+      style={{
+        display: "inline-flex",
+        position: "relative",
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: bg,
+        border: `${Math.max(1, Math.round(size * 0.045))}px solid #234533`,
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "visible",
+        boxSizing: "border-box",
+        flexShrink: 0,
+      }}
       aria-hidden="true"
     >
-      <FaceShape face={face} fill={skin} />
-      <Emotion emotion={emotion} />
-    </svg>
+      <span
+        style={{
+          fontSize: emojiSize,
+          lineHeight: 1,
+          userSelect: "none",
+        }}
+      >
+        {animal.emoji}
+      </span>
+      {ornament && ornament.emoji && (
+        <span
+          style={{
+            position: "absolute",
+            top: `-${Math.round(size * 0.08)}px`,
+            right: `-${Math.round(size * 0.08)}px`,
+            fontSize: ornSize,
+            lineHeight: 1,
+            filter: "drop-shadow(0 1px 1px rgba(0,0,0,.25))",
+          }}
+        >
+          {ornament.emoji}
+        </span>
+      )}
+    </span>
   );
 }

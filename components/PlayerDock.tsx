@@ -157,8 +157,7 @@ export default function PlayerDock({
                 <div className="relative">
                   {p.avatar &&
                   (p.avatar.drawingDataUrl ||
-                    p.avatar.face !== undefined ||
-                    p.avatar.emotion !== undefined) ? (
+                    p.avatar.animalId !== undefined) ? (
                     <Avatar avatar={p.avatar} size={30} />
                   ) : co ? (
                     <SectorIcon sector={co.sector} size={28} />

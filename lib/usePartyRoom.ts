@@ -72,7 +72,9 @@ export function usePartyRoom(roomCode: string, nickname: string) {
         kind: "send",
         text: `→ join`,
         detail: `nickname=${nickname} avatar=${
-          savedAvatar.drawingDataUrl ? "custom" : `f${savedAvatar.face}`
+          savedAvatar.drawingDataUrl
+            ? "custom"
+            : (savedAvatar.animalId ?? "-")
         }`,
       });
     });
